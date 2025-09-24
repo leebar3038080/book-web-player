@@ -1,31 +1,39 @@
 import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
-  const [segments, setSegments] = useState([]);
+  const [words, setWords] = useState([]);
   const [currentWordIndex, setCurrentWordIndex] = useState(-1);
   const [playbackRate, setPlaybackRate] = useState(1.0);
 
   const audioRef = useRef(null);
 
   useEffect(() => {
-    // טוען את הטקסט מתוך JSON
+    // טוען JSON ומוציא מתוכו את כל המילים
     fetch("/chapter_one_shimmer.json")
       .then((res) => res.json())
       .then((data) => {
-        setSegments(data.segments || []);
+        const allWords = [];
+        if (data.segments) {
+          data.segments.forEach((seg) => {
+            if (seg.words) {
+              seg.words.forEach((w) => allWords.push(w));
+            }
+          });
+        }
+        setWords(allWords);
       });
   }, []);
 
-  // בכל שינוי זמן באודיו → מחשב איזו מילה צריכה להיות מודגשת
+  // בכל שינוי זמן באודיו → מחשב איזו מילה להדגיש
   const handleTimeUpdate = () => {
-    if (!audioRef.current || segments.length === 0) return;
+    if (!audioRef.current || words.length === 0) return;
 
     const currentTime = audioRef.current.currentTime;
     let wordIndex = -1;
 
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
-      if (currentTime >= seg.start && currentTime <= seg.end) {
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      if (currentTime >= w.start && currentTime <= w.end) {
         wordIndex = i;
         break;
       }
@@ -33,11 +41,11 @@ export default function Home() {
     setCurrentWordIndex(wordIndex);
   };
 
-  // שינוי מהירות (בלי שינוי pitch)
+  // שינוי מהירות (בלי פגיעה בפיץ')
   const changeSpeed = (rate) => {
     if (audioRef.current) {
       audioRef.current.playbackRate = rate;
-      audioRef.current.preservesPitch = true; // חשוב – שומר על pitch
+      audioRef.current.preservesPitch = true;
       setPlaybackRate(rate);
     }
   };
@@ -54,14 +62,14 @@ export default function Home() {
           fontSize: "18px",
         }}
       >
-        {segments.map((seg, i) => (
+        {words.map((w, i) => (
           <span
             key={i}
             style={{
               backgroundColor: i === currentWordIndex ? "yellow" : "transparent",
             }}
           >
-            {seg.text + " "}
+            {w.word + " "}
           </span>
         ))}
       </div>
