@@ -5,8 +5,8 @@ export default function Home() {
   const [words, setWords] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [speed, setSpeed] = useState(1.0);
-  const audioRef = useRef(null);
-  const overlayRef = useRef(null);
+  const audioRef = useRef(null);   // נגן MP3 ראשי
+  const ttsRef = useRef(null);     // נגן TTS זמני
   const wordRefs = useRef([]);
 
   const [popup, setPopup] = useState({
@@ -19,7 +19,6 @@ export default function Home() {
     error: null,
   });
 
-  // מילים שהוחלפו – שמורים באינדקסים
   const [highlighted, setHighlighted] = useState(new Set());
 
   useEffect(() => {
@@ -31,7 +30,7 @@ export default function Home() {
           seg.words.forEach((w) =>
             flat.push({
               text: w.word,
-              original: w.word, // שמירת המילה המקורית
+              original: w.word,
               start: w.start,
               end: w.end,
             })
@@ -84,11 +83,7 @@ export default function Home() {
 
   async function handleWordClick(e, index) {
     e.preventDefault();
-
-    // עצירת נגן ברגע שלוחצים מילה
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
+    if (audioRef.current) audioRef.current.pause();
 
     const rect = e.target.getBoundingClientRect();
     const x = rect.left + window.scrollX;
@@ -116,7 +111,6 @@ export default function Home() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Request failed");
 
-      // הוספת המילה המקורית לרשימה אם היא שונתה
       const originalWord = words[index].original;
       const suggestions = data?.suggestions || [];
       if (target !== originalWord) {
@@ -137,43 +131,75 @@ export default function Home() {
     }
   }
 
-  function applySuggestion(word) {
+  // איתור גבולות משפט (על בסיס סימני פיסוק)
+  function getSentenceRange(index) {
+    let start = index;
+    let end = index;
+
+    while (start > 0 && !/[.!?]/.test(words[start - 1].text)) start--;
+    while (end < words.length - 1 && !/[.!?]/.test(words[end].text)) end++;
+
+    return [start, end];
+  }
+
+  async function applySuggestion(word) {
     if (popup.index == null) return;
     const idx = popup.index;
     const next = [...words];
 
-    // אם חזרנו למקור
     if (word === words[idx].original) {
       next[idx] = { ...next[idx], text: words[idx].original };
       setWords(next);
-
-      // להסיר את הצבע הכחול
       setHighlighted((prev) => {
         const copy = new Set(prev);
         copy.delete(idx);
         return copy;
       });
+      closePopup();
+      if (audioRef.current) audioRef.current.play();
     } else {
       next[idx] = { ...next[idx], text: word };
       setWords(next);
-
-      // לסמן בצבע כחול
       setHighlighted((prev) => {
         const copy = new Set(prev);
         copy.add(idx);
         return copy;
       });
-    }
 
-    closePopup();
+      // איתור משפט שלם
+      const [s, e] = getSentenceRange(idx);
+      const sentence = words.slice(s, e + 1).map((w) => w.text).join(" ");
+      const resumeTime = words[e]?.end || words[idx].end;
+
+      try {
+        const resp = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: sentence }),
+        });
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+
+        if (ttsRef.current) {
+          ttsRef.current.src = url;
+          ttsRef.current.onended = () => {
+            if (audioRef.current) {
+              audioRef.current.currentTime = resumeTime - 0.3;
+              audioRef.current.play();
+            }
+          };
+          ttsRef.current.play();
+        }
+      } catch (err) {
+        console.error("TTS error:", err);
+      }
+
+      closePopup();
+    }
   }
 
   function closePopup() {
     setPopup((p) => ({ ...p, visible: false }));
-    // חידוש נגן אחרי סגירה
-    if (audioRef.current) {
-      audioRef.current.play();
-    }
   }
 
   function handleWordRightClick(e, index) {
@@ -190,6 +216,7 @@ export default function Home() {
       <audio ref={audioRef} hidden>
         <source src="/chapter_one_shimmer.mp3" type="audio/mpeg" />
       </audio>
+      <audio ref={ttsRef} hidden />
 
       <div style={{ marginBottom: 20 }}>
         <button onClick={handlePlay}>▶ Play</button>
