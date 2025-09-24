@@ -8,19 +8,18 @@ export default async function handler(req, res) {
 
     const prompt = `
 You are a helpful text editor assistant.
-Your task: suggest 3–5 alternative words or phrases that would fit naturally in this text.
+Suggest 3–5 alternative words or short phrases that would fit naturally in this context.
+For each suggestion, also add a short explanation why it fits.
 
 Current word: "${word}"
-Context (surrounding text):
+Context:
 ---
 ${context}
 ---
 
-Guidelines:
-- Suggestions must preserve the meaning of the sentence.
-- Use natural language (not code or JSON).
-- Keep them short and clear.
-- Return only the suggestions, each on a new line.
+Format your answer as:
+word – explanation
+(one per line)
     `;
 
     const resp = await fetch("https://api.openai.com/v1/responses", {
@@ -42,9 +41,8 @@ Guidelines:
       return res.status(500).json({ error: "API request failed" });
     }
 
-    // מפענח את התשובה מהשדה הנכון
+    // מפענח את התשובה
     let text = "";
-
     if (data.output_text) {
       text = data.output_text;
     } else if (
@@ -58,7 +56,11 @@ Guidelines:
     const suggestions = text
       .split("\n")
       .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+      .filter((s) => s.length > 0)
+      .map((line) => {
+        const [word, explanation] = line.split("–").map((p) => p.trim());
+        return { word, explanation: explanation || "" };
+      });
 
     return res.status(200).json({ suggestions });
   } catch (err) {
