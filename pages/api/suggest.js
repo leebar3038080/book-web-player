@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     const prompt = `
 You are a helpful text editor assistant.
 Suggest 3–5 alternative words or short phrases that would fit naturally in this context.
-For each suggestion, also add a short explanation why it fits.
+One of them should be clearly marked as the most recommended choice.
 
 Current word: "${word}"
 Context:
@@ -18,8 +18,10 @@ ${context}
 ---
 
 Format your answer as:
-word – explanation
-(one per line)
+word
+word
+word (recommended)
+word
     `;
 
     const resp = await fetch("https://api.openai.com/v1/responses", {
@@ -41,7 +43,7 @@ word – explanation
       return res.status(500).json({ error: "API request failed" });
     }
 
-    // מפענח את התשובה
+    // חילוץ הטקסט
     let text = "";
     if (data.output_text) {
       text = data.output_text;
@@ -53,14 +55,15 @@ word – explanation
       text = data.output[0].content[0].text;
     }
 
+    // פירוק לשורות + סימון ההמלצה
     const suggestions = text
       .split("\n")
       .map((s) => s.trim())
       .filter((s) => s.length > 0)
-      .map((line) => {
-        const [word, explanation] = line.split("–").map((p) => p.trim());
-        return { word, explanation: explanation || "" };
-      });
+      .map((line) => ({
+        word: line.replace(/\(recommended\)/i, "").trim(),
+        isRecommended: /\(recommended\)/i.test(line),
+      }));
 
     return res.status(200).json({ suggestions });
   } catch (err) {
