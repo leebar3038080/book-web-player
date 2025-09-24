@@ -1,13 +1,14 @@
-// pages/index.js
 import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
   const [words, setWords] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [speed, setSpeed] = useState(1.0);
-  const audioRef = useRef(null);   // נגן MP3 ראשי
-  const ttsRef = useRef(null);     // נגן TTS זמני
+
+  const audioRef = useRef(null); // MP3 ראשי
+  const ttsRef = useRef(null);   // נגן TTS זמני למשפט
   const wordRefs = useRef([]);
+  const ttsUrlRef = useRef(null); // לשחרור URL קודם
 
   const [popup, setPopup] = useState({
     visible: false,
@@ -19,7 +20,11 @@ export default function Home() {
     error: null,
   });
 
+  // אינדקסים של מילים שהוחלפו (לצבוע בכחול)
   const [highlighted, setHighlighted] = useState(new Set());
+
+  // דגל שמונע חפיפה בין TTS למשפט ל-MP3
+  const [isReplacing, setIsReplacing] = useState(false);
 
   useEffect(() => {
     fetch("/chapter_one_shimmer.json")
@@ -40,39 +45,49 @@ export default function Home() {
       });
   }, []);
 
+  // סנכרון ההדגשה הצהובה עם זמן ה-MP3 הראשי
   useEffect(() => {
     if (!audioRef.current) return;
     const interval = setInterval(() => {
       const audio = audioRef.current;
-      if (!audio || !words.length) return;
+      if (!audio || !words.length || isReplacing) return;
       const t = audio.currentTime;
       const idx = words.findIndex((w) => t >= w.start && t < w.end);
       if (idx !== -1) setCurrentIndex(idx);
-    }, 100);
+    }, 80);
     return () => clearInterval(interval);
-  }, [words]);
+  }, [words, isReplacing]);
 
-  const handlePlay = () => audioRef.current?.play();
-  const handlePause = () => audioRef.current?.pause();
+  // שליטה בסיסית
+  const handlePlay = () => {
+    if (isReplacing) return;
+    audioRef.current?.play();
+  };
+  const handlePause = () => {
+    audioRef.current?.pause();
+    ttsRef.current?.pause();
+  };
   const handleStop = () => {
-    if (!audioRef.current) return;
-    audioRef.current.pause();
+    audioRef.current?.pause();
     audioRef.current.currentTime = 0;
     setCurrentIndex(-1);
+    ttsRef.current?.pause();
+    setIsReplacing(false);
   };
   const handleSlower = () => {
-    if (!audioRef.current) return;
     const newSpeed = Math.max(0.5, speed - 0.1);
-    audioRef.current.playbackRate = newSpeed;
     setSpeed(newSpeed);
+    if (audioRef.current) audioRef.current.playbackRate = newSpeed;
+    if (ttsRef.current) ttsRef.current.playbackRate = newSpeed;
   };
   const handleFaster = () => {
-    if (!audioRef.current) return;
     const newSpeed = Math.min(1.5, speed + 0.1);
-    audioRef.current.playbackRate = newSpeed;
     setSpeed(newSpeed);
+    if (audioRef.current) audioRef.current.playbackRate = newSpeed;
+    if (ttsRef.current) ttsRef.current.playbackRate = newSpeed;
   };
 
+  // חלון הקשר להצעות
   function getContext(index) {
     const spanBack = 40;
     const spanForward = 20;
@@ -81,9 +96,11 @@ export default function Home() {
     return words.slice(start, end).map((w) => w.text).join(" ");
   }
 
+  // פתיחת פופאפ הצעות (קליק שמאלי) + עצירה אוטומטית
   async function handleWordClick(e, index) {
     e.preventDefault();
-    if (audioRef.current) audioRef.current.pause();
+    audioRef.current?.pause();
+    ttsRef.current?.pause();
 
     const rect = e.target.getBoundingClientRect();
     const x = rect.left + window.scrollX;
@@ -114,7 +131,7 @@ export default function Home() {
       const originalWord = words[index].original;
       const suggestions = data?.suggestions || [];
       if (target !== originalWord) {
-        suggestions.push({ word: originalWord, isOriginal: true });
+        suggestions.unshift({ word: originalWord, isOriginal: true });
       }
 
       setPopup((p) => ({
@@ -131,23 +148,39 @@ export default function Home() {
     }
   }
 
-  // איתור גבולות משפט (על בסיס סימני פיסוק)
+  // חישוב גבולות משפט סביב אינדקס (מחפש . ! ?)
   function getSentenceRange(index) {
-    let start = index;
-    let end = index;
+    let s = index;
+    let e = index;
 
-    while (start > 0 && !/[.!?]/.test(words[start - 1].text)) start--;
-    while (end < words.length - 1 && !/[.!?]/.test(words[end].text)) end++;
-
-    return [start, end];
+    while (s > 0) {
+      const prev = words[s - 1]?.text || "";
+      if (/[.!?]$/.test(prev)) break;
+      s--;
+    }
+    while (e < words.length - 1) {
+      const cur = words[e]?.text || "";
+      if (/[.!?]$/.test(cur)) break;
+      e++;
+    }
+    return [s, e];
   }
 
-  async function applySuggestion(word) {
+  function revokePrevTtsUrl() {
+    if (ttsUrlRef.current) {
+      URL.revokeObjectURL(ttsUrlRef.current);
+      ttsUrlRef.current = null;
+    }
+  }
+
+  // החלפת מילה / חזרה למקור + השמעת משפט שלם ב-TTS
+  async function applySuggestion(chosen) {
     if (popup.index == null) return;
     const idx = popup.index;
     const next = [...words];
+    const isReturnToOriginal = chosen === words[idx].original;
 
-    if (word === words[idx].original) {
+    if (isReturnToOriginal) {
       next[idx] = { ...next[idx], text: words[idx].original };
       setWords(next);
       setHighlighted((prev) => {
@@ -155,55 +188,88 @@ export default function Home() {
         copy.delete(idx);
         return copy;
       });
-      closePopup();
-      if (audioRef.current) audioRef.current.play();
+      closePopup(false);
+      if (audioRef.current) {
+        audioRef.current.currentTime = Math.max(0, words[idx].start - 0.5);
+        audioRef.current.play();
+      }
+      return;
     } else {
-      next[idx] = { ...next[idx], text: word };
+      next[idx] = { ...next[idx], text: chosen };
       setWords(next);
       setHighlighted((prev) => {
         const copy = new Set(prev);
         copy.add(idx);
         return copy;
       });
-
-      // איתור משפט שלם
-      const [s, e] = getSentenceRange(idx);
-      const sentence = words.slice(s, e + 1).map((w) => w.text).join(" ");
-      const resumeTime = words[e]?.end || words[idx].end;
-
-      try {
-        const resp = await fetch("/api/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: sentence }),
-        });
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-
-        if (ttsRef.current) {
-          ttsRef.current.src = url;
-          ttsRef.current.onended = () => {
-            if (audioRef.current) {
-              audioRef.current.currentTime = resumeTime - 0.3;
-              audioRef.current.play();
-            }
-          };
-          ttsRef.current.play();
-        }
-      } catch (err) {
-        console.error("TTS error:", err);
-      }
-
-      closePopup();
     }
+
+    const [s, e] = getSentenceRange(idx);
+    const sentenceText = next.slice(s, e + 1).map((w) => w.text).join(" ");
+    const sentenceStart = words[s]?.start ?? words[idx].start;
+    const sentenceEnd = words[e]?.end ?? words[idx].end;
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = sentenceStart;
+    }
+
+    try {
+      setIsReplacing(true);
+      revokePrevTtsUrl();
+      const resp = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: sentenceText }),
+      });
+      if (!resp.ok) throw new Error("TTS failed");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      ttsUrlRef.current = url;
+
+      if (ttsRef.current) {
+        ttsRef.current.src = url;
+        ttsRef.current.playbackRate = speed;
+        audioRef.current.playbackRate = speed;
+
+        ttsRef.current.onplay = () => {
+          audioRef.current?.pause();
+        };
+
+        ttsRef.current.onended = () => {
+          setIsReplacing(false);
+          if (audioRef.current) {
+            audioRef.current.currentTime = Math.max(0, sentenceEnd + 0.05);
+            audioRef.current.play();
+          }
+          revokePrevTtsUrl();
+        };
+
+        await ttsRef.current.play();
+      }
+    } catch (err) {
+      console.error("TTS error:", err);
+      setIsReplacing(false);
+      audioRef.current?.play();
+    }
+
+    closePopup(false);
   }
 
-  function closePopup() {
+  function closePopup(requestedResume = false) {
     setPopup((p) => ({ ...p, visible: false }));
+    if (requestedResume && !isReplacing) {
+      audioRef.current?.play();
+    }
   }
 
   function handleWordRightClick(e, index) {
     e.preventDefault();
+    if (ttsRef.current) {
+      ttsRef.current.pause();
+      revokePrevTtsUrl();
+      setIsReplacing(false);
+    }
     if (!audioRef.current) return;
     audioRef.current.currentTime = words[index].start;
     audioRef.current.play();
@@ -265,7 +331,7 @@ export default function Home() {
             position: "absolute",
             left: popup.x,
             top: popup.y,
-            minWidth: 250,
+            minWidth: 260,
             background: "white",
             border: "1px solid #ddd",
             borderRadius: 8,
@@ -283,7 +349,7 @@ export default function Home() {
           >
             <strong>הצעות</strong>
             <button
-              onClick={closePopup}
+              onClick={() => closePopup(true)}
               style={{
                 border: "none",
                 background: "transparent",
