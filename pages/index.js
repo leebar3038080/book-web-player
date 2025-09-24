@@ -6,18 +6,10 @@ export default function Home() {
   const [speed, setSpeed] = useState(1.0);
   const audioRef = useRef(null);
   const wordRefs = useRef([]);
-
-  const [popup, setPopup] = useState({
-    visible: false,
-    x: 0,
-    y: 0,
-    index: null,
-    suggestions: [],
-    loading: false,
-    error: null,
-  });
+  const [selectedIndex, setSelectedIndex] = useState(null);
 
   useEffect(() => {
+    // טוען את המילים מהקובץ JSON
     fetch("/chapter_one_shimmer.json")
       .then((res) => res.json())
       .then((data) => {
@@ -26,6 +18,7 @@ export default function Home() {
           seg.words.forEach((w) =>
             flat.push({
               text: w.word,
+              original: w.word, // נשמור גם את המילה המקורית
               start: w.start,
               end: w.end,
             })
@@ -47,96 +40,72 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [words]);
 
-  const handlePlay = () => audioRef.current?.play();
-  const handlePause = () => audioRef.current?.pause();
-  const handleStop = () => {
-    if (!audioRef.current) return;
-    audioRef.current.pause();
-    audioRef.current.currentTime = 0;
-    setCurrentIndex(-1);
-  };
-  const handleSlower = () => {
-    if (!audioRef.current) return;
-    const newSpeed = Math.max(0.5, speed - 0.1);
-    audioRef.current.playbackRate = newSpeed;
-    setSpeed(newSpeed);
-  };
-  const handleFaster = () => {
-    if (!audioRef.current) return;
-    const newSpeed = Math.min(1.5, speed + 0.1);
-    audioRef.current.playbackRate = newSpeed;
-    setSpeed(newSpeed);
-  };
-
-  function getContext(index) {
-    const spanBack = 40;
-    const spanForward = 20;
-    const start = Math.max(0, index - spanBack);
-    const end = Math.min(words.length, index + spanForward + 1);
-    return words.slice(start, end).map((w) => w.text).join(" ");
-  }
-
-  async function handleWordClick(e, index) {
-    const rect = e.target.getBoundingClientRect();
-    const x = rect.left + window.scrollX;
-    const y = rect.top + window.scrollY + rect.height + 6;
-
-    const target = words[index]?.text;
-    const context = getContext(index);
-
-    setPopup({
-      visible: true,
-      x,
-      y,
-      index,
-      suggestions: [],
-      loading: true,
-      error: null,
-    });
-
-    try {
-      const resp = await fetch("/api/suggest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word: target, context }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data?.error || "Request failed");
-
-      setPopup((p) => ({
-        ...p,
-        loading: false,
-        suggestions: data?.suggestions || [],
-      }));
-    } catch (err) {
-      setPopup((p) => ({
-        ...p,
-        loading: false,
-        error: err?.message || "Unknown error",
-      }));
+  const handlePlay = () => {
+    if (audioRef.current) {
+      audioRef.current.play();
     }
-  }
+  };
 
-  function applySuggestion(word) {
-    if (popup.index == null) return;
-    const next = [...words];
-    next[popup.index] = { ...next[popup.index], text: word };
-    setWords(next);
-    closePopup();
-  }
+  const handlePause = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+  };
 
-  function closePopup() {
-    setPopup((p) => ({ ...p, visible: false }));
-  }
+  const handleStop = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setCurrentIndex(-1);
+    }
+  };
+
+  const handleSlower = () => {
+    if (audioRef.current) {
+      const newSpeed = Math.max(0.5, speed - 0.1);
+      audioRef.current.playbackRate = newSpeed;
+      setSpeed(newSpeed);
+    }
+  };
+
+  const handleFaster = () => {
+    if (audioRef.current) {
+      const newSpeed = Math.min(1.5, speed + 0.1);
+      audioRef.current.playbackRate = newSpeed;
+      setSpeed(newSpeed);
+    }
+  };
+
+  const handleWordClick = (i) => {
+    setSelectedIndex(i);
+  };
+
+  const restoreOriginal = () => {
+    if (selectedIndex !== null) {
+      const copy = [...words];
+      copy[selectedIndex].text = copy[selectedIndex].original;
+      setWords(copy);
+      setSelectedIndex(null);
+    }
+  };
+
+  const playFromHere = () => {
+    if (selectedIndex !== null && audioRef.current) {
+      audioRef.current.currentTime = words[selectedIndex].start;
+      audioRef.current.play();
+    }
+  };
 
   return (
     <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
       <h1>WhisperX Web Player</h1>
 
+      {/* נגן חבוי - לא מציג את סרגל השליטה של הדפדפן */}
       <audio ref={audioRef} hidden>
         <source src="/chapter_one_shimmer.mp3" type="audio/mpeg" />
       </audio>
 
+      {/* כפתורים לשליטה */}
       <div style={{ marginBottom: 20 }}>
         <button onClick={handlePlay}>▶ Play</button>
         <button onClick={handlePause}>⏸ Pause</button>
@@ -146,6 +115,29 @@ export default function Home() {
         <span style={{ marginLeft: 10 }}>Speed: {speed.toFixed(1)}x</span>
       </div>
 
+      {/* תפריט לפעולות על מילה מסומנת */}
+      {selectedIndex !== null && (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: 10,
+            border: "1px solid #aaa",
+            borderRadius: 6,
+            background: "#f9f9f9",
+          }}
+        >
+          <p>
+            מילה נבחרה:{" "}
+            <strong>{words[selectedIndex]?.text}</strong>
+          </p>
+          <button onClick={restoreOriginal}>🔄 חזור למקור</button>
+          <button onClick={playFromHere} style={{ marginLeft: 10 }}>
+            🎧 השמע מכאן
+          </button>
+        </div>
+      )}
+
+      {/* רובריקה עם כל הטקסט */}
       <div
         style={{
           border: "1px solid #ddd",
@@ -153,7 +145,7 @@ export default function Home() {
           lineHeight: 1.8,
           fontSize: 18,
           borderRadius: 8,
-          width: "100%",
+          width: "100%", // תופס את כל הרוחב
           whiteSpace: "normal",
           wordWrap: "break-word",
           marginTop: 20,
@@ -163,88 +155,24 @@ export default function Home() {
           <span
             key={i}
             ref={(el) => (wordRefs.current[i] = el)}
-            onClick={(e) => handleWordClick(e, i)}
+            onClick={() => handleWordClick(i)}
             style={{
-              background: i === currentIndex ? "yellow" : "transparent",
+              background:
+                i === currentIndex
+                  ? "yellow"
+                  : i === selectedIndex
+                  ? "#a0d8ef"
+                  : "transparent",
               marginRight: 4,
               borderRadius: 4,
               cursor: "pointer",
+              padding: "2px 4px",
             }}
           >
             {w.text}
           </span>
         ))}
       </div>
-
-      {popup.visible && (
-        <div
-          style={{
-            position: "absolute",
-            left: popup.x,
-            top: popup.y,
-            minWidth: 250,
-            background: "white",
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            padding: 10,
-            boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
-            zIndex: 9999,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: 6,
-            }}
-          >
-            <strong>הצעות</strong>
-            <button
-              onClick={closePopup}
-              style={{
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-            >
-              ✕
-            </button>
-          </div>
-
-          {popup.loading && <div>טוען...</div>}
-          {popup.error && (
-            <div style={{ color: "crimson" }}>שגיאה: {popup.error}</div>
-          )}
-
-          {!popup.loading && !popup.error && (
-            <>
-              {popup.suggestions.length === 0 ? (
-                <div>אין הצעות</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {popup.suggestions.map((s, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => applySuggestion(s.word)}
-                      style={{
-                        textAlign: "left",
-                        padding: "6px 8px",
-                        borderRadius: 6,
-                        border: "1px solid #ddd",
-                        background: "#f8f8f8",
-                        cursor: "pointer",
-                        fontWeight: s.isRecommended ? "bold" : "normal",
-                      }}
-                    >
-                      {s.word} {s.isRecommended ? "⭐" : ""}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 }
