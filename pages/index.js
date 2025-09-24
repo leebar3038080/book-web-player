@@ -1,125 +1,86 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
-  const [words, setWords] = useState([]);
-  const [audioUrl, setAudioUrl] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackRate, setPlaybackRate] = useState(1.0);
+  const [segments, setSegments] = useState([]);
   const [currentWordIndex, setCurrentWordIndex] = useState(-1);
+  const [playbackRate, setPlaybackRate] = useState(1.0);
+
   const audioRef = useRef(null);
 
   useEffect(() => {
-    // טוען את ה-JSON עם הסגמנטים והמילים
+    // טוען את הטקסט מתוך JSON
     fetch("/chapter_one_shimmer.json")
       .then((res) => res.json())
       .then((data) => {
-        const wordsData = [];
-        data.segments.forEach((seg) => {
-          seg.words.forEach((w) => wordsData.push(w));
-        });
-        setWords(wordsData);
-        setAudioUrl("/api/tts");
+        setSegments(data.segments || []);
       });
   }, []);
 
-  const togglePlay = () => {
-    if (!audioRef.current) {
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
+  // בכל שינוי זמן באודיו → מחשב איזו מילה צריכה להיות מודגשת
+  const handleTimeUpdate = () => {
+    if (!audioRef.current || segments.length === 0) return;
 
-      // שומר על הפיטצ'
-      audioRef.current.preservesPitch = true;
-      audioRef.current.mozPreservesPitch = true;
-      audioRef.current.webkitPreservesPitch = true;
+    const currentTime = audioRef.current.currentTime;
+    let wordIndex = -1;
 
-      audio.playbackRate = playbackRate;
-      audio.addEventListener("ended", () => {
-        setIsPlaying(false);
-        setCurrentWordIndex(-1);
-      });
-
-      // עדכון מרקר לפי הזמן
-      audio.addEventListener("timeupdate", () => {
-        const t = audio.currentTime;
-        const idx = words.findIndex(
-          (w) => t >= w.start && t <= w.end
-        );
-        if (idx !== -1 && idx !== currentWordIndex) {
-          setCurrentWordIndex(idx);
-        }
-      });
-
-      audio.play();
-      setIsPlaying(true);
-    } else {
-      if (isPlaying) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        audioRef.current.play();
-        setIsPlaying(true);
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      if (currentTime >= seg.start && currentTime <= seg.end) {
+        wordIndex = i;
+        break;
       }
     }
+    setCurrentWordIndex(wordIndex);
   };
 
+  // שינוי מהירות (בלי שינוי pitch)
   const changeSpeed = (rate) => {
-    setPlaybackRate(rate);
     if (audioRef.current) {
       audioRef.current.playbackRate = rate;
+      audioRef.current.preservesPitch = true; // חשוב – שומר על pitch
+      setPlaybackRate(rate);
     }
   };
 
   return (
-    <div style={{ padding: "20px", maxWidth: "900px", margin: "0 auto" }}>
+    <div style={{ padding: "40px" }}>
       <h1>WhisperX Web Player</h1>
 
-      {/* טקסט מסונכרן */}
       <div
         style={{
           border: "1px solid #ccc",
-          padding: "15px",
-          marginBottom: "20px",
-          lineHeight: "1.6",
+          padding: "20px",
+          lineHeight: "1.8",
+          fontSize: "18px",
         }}
       >
-        {words.map((w, i) => (
+        {segments.map((seg, i) => (
           <span
             key={i}
             style={{
               backgroundColor: i === currentWordIndex ? "yellow" : "transparent",
-              marginRight: "3px",
             }}
           >
-            {w.word}
+            {seg.text + " "}
           </span>
         ))}
       </div>
 
-      {/* כפתורי שליטה */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
-        <button onClick={togglePlay}>
-          {isPlaying ? "⏸ עצור" : "▶️ נגן"}
-        </button>
+      <div style={{ marginTop: "20px" }}>
+        <button onClick={() => audioRef.current.play()}>▶️ הפעל</button>
+        <button onClick={() => audioRef.current.pause()}>⏸ עצור</button>
 
-        <button
-          onClick={() => changeSpeed(0.8)}
-          style={{ fontWeight: playbackRate === 0.8 ? "bold" : "normal" }}
-        >
-          0.8×
-        </button>
-        <button
-          onClick={() => changeSpeed(0.9)}
-          style={{ fontWeight: playbackRate === 0.9 ? "bold" : "normal" }}
-        >
-          0.9×
-        </button>
-        <button
-          onClick={() => changeSpeed(1.0)}
-          style={{ fontWeight: playbackRate === 1.0 ? "bold" : "normal" }}
-        >
-          1×
-        </button>
+        <button onClick={() => changeSpeed(0.8)}>0.8x</button>
+        <button onClick={() => changeSpeed(0.9)}>0.9x</button>
+        <button onClick={() => changeSpeed(1.0)}>1x</button>
       </div>
+
+      {/* נגן מוסתר */}
+      <audio
+        ref={audioRef}
+        src="/chapter_one_shimmer.mp3"
+        onTimeUpdate={handleTimeUpdate}
+      />
     </div>
   );
 }
