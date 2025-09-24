@@ -3,77 +3,48 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { word, context } = req.body || {};
-  if (!word || !context) {
-    return res.status(400).json({ error: "Missing 'word' or 'context'" });
-  }
+  const { word } = req.body;
 
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "Missing OPENAI_API_KEY" });
-    }
-
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        input: [
-          {
-            role: "system",
-            content:
-              "You rewrite words in context. Return up to 2 concise alternative words that fit the exact context and tone. Keep the same language and casing as the original. Respond ONLY as a JSON array of strings.",
-          },
-          {
-            role: "user",
-            content: `Context:\n${context}\n\nTarget word: "${word}"\nReturn up to 2 alternative words as JSON array only.`,
-          },
-        ],
-        max_output_tokens: 60,
-        temperature: 0.4,
+        model: "gpt-4.1-mini",
+        input: `Suggest two synonyms for the word "${word}" in JSON array format.`,
       }),
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      return res.status(response.status).json({ error: errText });
-    }
-
     const data = await response.json();
-
-    // 🔍 הדפסה ללוגים של Vercel
     console.log("🔍 RAW OpenAI response:", JSON.stringify(data, null, 2));
 
-    // מנסים למצוא טקסט מהפלט
     let text = "";
-    if (data.output_text) {
-      text = data.output_text;
-    } else if (data.output?.[0]?.content?.[0]?.text) {
+
+    // מוודאים שיש תוכן
+    if (data.output && data.output[0] && data.output[0].content[0]) {
       text = data.output[0].content[0].text;
+    } else if (data.output_text) {
+      text = data.output_text;
+    }
+
+    // ניקוי עטיפות ```json ו-```
+    if (text) {
+      text = text.replace(/```json|```/g, "").trim();
     }
 
     let suggestions = [];
     try {
-      const parsed = JSON.parse(text);
-      if (Array.isArray(parsed)) {
-        suggestions = parsed.slice(0, 2);
-      }
-    } catch {
-      // fallback parsing
-      suggestions = text
-        .replace(/[\[\]\n"]/g, "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .slice(0, 2);
+      suggestions = JSON.parse(text);
+    } catch (err) {
+      console.error("❌ JSON parse error:", err, "on text:", text);
     }
 
-    return res.status(200).json({ suggestions });
-  } catch (e) {
-    return res.status(500).json({ error: e?.message || "Unknown error" });
+    res.status(200).json({ suggestions });
+  } catch (error) {
+    console.error("API error:", error);
+    res.status(500).json({ error: "Failed to fetch suggestions" });
   }
 }
