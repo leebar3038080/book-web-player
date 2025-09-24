@@ -233,12 +233,10 @@ export default function Home() {
                         border: "1px solid #ddd",
                         background: "#f8f8f8",
                         cursor: "pointer",
+                        fontWeight: s.isRecommended ? "bold" : "normal",
                       }}
                     >
-                      <strong>{s.word}</strong>
-                      <div style={{ fontSize: 12, color: "#555" }}>
-                        {s.explanation}
-                      </div>
+                      {s.word} {s.isRecommended ? "⭐" : ""}
                     </button>
                   ))}
                 </div>
