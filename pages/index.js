@@ -1,12 +1,12 @@
+// pages/index.js
 import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
   const [words, setWords] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [speed, setSpeed] = useState(1.0);
-
-  const audioRef = useRef(null); // נגן ראשי MP3
-  const replacementRef = useRef(null); // נגן שני למילים מוחלפות
+  const audioRef = useRef(null);
+  const overlayRef = useRef(null);
   const wordRefs = useRef([]);
 
   const [popup, setPopup] = useState({
@@ -19,8 +19,8 @@ export default function Home() {
     error: null,
   });
 
-  // שמירת מילים מוחלפות
-  const [replacements, setReplacements] = useState({});
+  // מילים שהוחלפו – שמורים באינדקסים
+  const [highlighted, setHighlighted] = useState(new Set());
 
   useEffect(() => {
     fetch("/chapter_one_shimmer.json")
@@ -31,9 +31,9 @@ export default function Home() {
           seg.words.forEach((w) =>
             flat.push({
               text: w.word,
+              original: w.word, // שמירת המילה המקורית
               start: w.start,
               end: w.end,
-              original: w.word,
             })
           );
         });
@@ -54,10 +54,7 @@ export default function Home() {
   }, [words]);
 
   const handlePlay = () => audioRef.current?.play();
-  const handlePause = () => {
-    audioRef.current?.pause();
-    replacementRef.current?.pause();
-  };
+  const handlePause = () => audioRef.current?.pause();
   const handleStop = () => {
     if (!audioRef.current) return;
     audioRef.current.pause();
@@ -86,8 +83,12 @@ export default function Home() {
   }
 
   async function handleWordClick(e, index) {
-    // עצירה אוטומטית של הקריינות
-    handlePause();
+    e.preventDefault();
+
+    // עצירת נגן ברגע שלוחצים מילה
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
 
     const rect = e.target.getBoundingClientRect();
     const x = rect.left + window.scrollX;
@@ -115,16 +116,17 @@ export default function Home() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Request failed");
 
-      // מוסיף גם את המילה המקורית לרשימת ההצעות
-      const suggestionsWithOriginal = [
-        { word: words[index].original, isRecommended: false, isOriginal: true },
-        ...(data?.suggestions || []),
-      ];
+      // הוספת המילה המקורית לרשימה אם היא שונתה
+      const originalWord = words[index].original;
+      const suggestions = data?.suggestions || [];
+      if (target !== originalWord) {
+        suggestions.push({ word: originalWord, isOriginal: true });
+      }
 
       setPopup((p) => ({
         ...p,
         loading: false,
-        suggestions: suggestionsWithOriginal,
+        suggestions,
       }));
     } catch (err) {
       setPopup((p) => ({
@@ -135,48 +137,45 @@ export default function Home() {
     }
   }
 
-  async function applySuggestion(word) {
+  function applySuggestion(word) {
     if (popup.index == null) return;
     const idx = popup.index;
-
     const next = [...words];
-    next[idx] = { ...next[idx], text: word };
-    setWords(next);
 
-    // בקשת אודיו מהמנוע
-    try {
-      const resp = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: word }),
+    // אם חזרנו למקור
+    if (word === words[idx].original) {
+      next[idx] = { ...next[idx], text: words[idx].original };
+      setWords(next);
+
+      // להסיר את הצבע הכחול
+      setHighlighted((prev) => {
+        const copy = new Set(prev);
+        copy.delete(idx);
+        return copy;
       });
-      if (!resp.ok) throw new Error("TTS failed");
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
+    } else {
+      next[idx] = { ...next[idx], text: word };
+      setWords(next);
 
-      setReplacements((r) => ({
-        ...r,
-        [idx]: url,
-      }));
-    } catch (err) {
-      console.error("TTS error", err);
+      // לסמן בצבע כחול
+      setHighlighted((prev) => {
+        const copy = new Set(prev);
+        copy.add(idx);
+        return copy;
+      });
     }
 
     closePopup();
-
-    // חזרה קצת אחורה כדי לשמוע שוב
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(0, words[idx].start - 1);
-      audioRef.current.play();
-    }
   }
 
   function closePopup() {
     setPopup((p) => ({ ...p, visible: false }));
-    audioRef.current?.play();
+    // חידוש נגן אחרי סגירה
+    if (audioRef.current) {
+      audioRef.current.play();
+    }
   }
 
-  // טיפול בקליק ימני לניגון מנקודה
   function handleWordRightClick(e, index) {
     e.preventDefault();
     if (!audioRef.current) return;
@@ -184,32 +183,13 @@ export default function Home() {
     audioRef.current.play();
   }
 
-  // מעקב אחרי מילים מוחלפות
-  useEffect(() => {
-    if (!audioRef.current || !replacementRef.current) return;
-    if (currentIndex in replacements) {
-      const url = replacements[currentIndex];
-      if (!url) return;
-      audioRef.current.pause();
-      replacementRef.current.src = url;
-      replacementRef.current.play();
-      replacementRef.current.onended = () => {
-        if (audioRef.current) {
-          audioRef.current.currentTime = words[currentIndex].end;
-          audioRef.current.play();
-        }
-      };
-    }
-  }, [currentIndex, replacements, words]);
-
   return (
     <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
       <h1>WhisperX Web Player</h1>
 
-      <audio ref={audioRef}>
+      <audio ref={audioRef} hidden>
         <source src="/chapter_one_shimmer.mp3" type="audio/mpeg" />
       </audio>
-      <audio ref={replacementRef} hidden />
 
       <div style={{ marginBottom: 20 }}>
         <button onClick={handlePlay}>▶ Play</button>
@@ -244,6 +224,7 @@ export default function Home() {
               marginRight: 4,
               borderRadius: 4,
               cursor: "pointer",
+              color: highlighted.has(i) ? "blue" : "inherit",
             }}
           >
             {w.text}
@@ -311,8 +292,8 @@ export default function Home() {
                         fontWeight: s.isRecommended ? "bold" : "normal",
                       }}
                     >
-                      {s.word} {s.isOriginal ? "(מקור)" : ""}
-                      {s.isRecommended ? "⭐" : ""}
+                      {s.word} {s.isRecommended ? "⭐" : ""}
+                      {s.isOriginal ? " (מקורי)" : ""}
                     </button>
                   ))}
                 </div>
