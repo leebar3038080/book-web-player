@@ -7,7 +7,6 @@ export default function Home() {
   const audioRef = useRef(null);
   const wordRefs = useRef([]);
 
-  // מצב לפופאפ
   const [popup, setPopup] = useState({
     visible: false,
     x: 0,
@@ -19,7 +18,6 @@ export default function Home() {
   });
 
   useEffect(() => {
-    // טוען את המילים מהקובץ JSON
     fetch("/chapter_one_shimmer.json")
       .then((res) => res.json())
       .then((data) => {
@@ -70,7 +68,6 @@ export default function Home() {
     setSpeed(newSpeed);
   };
 
-  // הפקת הקשר סביב מילה (חלון גדול יותר: 40 מילים אחורה, 20 קדימה)
   function getContext(index) {
     const spanBack = 40;
     const spanForward = 20;
@@ -79,7 +76,6 @@ export default function Home() {
     return words.slice(start, end).map((w) => w.text).join(" ");
   }
 
-  // טיפול בלחיצה על מילה
   async function handleWordClick(e, index) {
     const rect = e.target.getBoundingClientRect();
     const x = rect.left + window.scrollX;
@@ -121,11 +117,10 @@ export default function Home() {
     }
   }
 
-  // החלפת מילה
-  function applySuggestion(s) {
+  function applySuggestion(word) {
     if (popup.index == null) return;
     const next = [...words];
-    next[popup.index] = { ...next[popup.index], text: s };
+    next[popup.index] = { ...next[popup.index], text: word };
     setWords(next);
     closePopup();
   }
@@ -138,12 +133,10 @@ export default function Home() {
     <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
       <h1>WhisperX Web Player</h1>
 
-      {/* נגן חבוי */}
       <audio ref={audioRef} hidden>
         <source src="/chapter_one_shimmer.mp3" type="audio/mpeg" />
       </audio>
 
-      {/* כפתורים לשליטה */}
       <div style={{ marginBottom: 20 }}>
         <button onClick={handlePlay}>▶ Play</button>
         <button onClick={handlePause}>⏸ Pause</button>
@@ -153,7 +146,6 @@ export default function Home() {
         <span style={{ marginLeft: 10 }}>Speed: {speed.toFixed(1)}x</span>
       </div>
 
-      {/* טקסט */}
       <div
         style={{
           border: "1px solid #ddd",
@@ -184,14 +176,13 @@ export default function Home() {
         ))}
       </div>
 
-      {/* פופאפ הצעות */}
       {popup.visible && (
         <div
           style={{
             position: "absolute",
             left: popup.x,
             top: popup.y,
-            minWidth: 200,
+            minWidth: 250,
             background: "white",
             border: "1px solid #ddd",
             borderRadius: 8,
@@ -230,17 +221,11 @@ export default function Home() {
               {popup.suggestions.length === 0 ? (
                 <div>אין הצעות</div>
               ) : (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                  }}
-                >
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {popup.suggestions.map((s, idx) => (
                     <button
                       key={idx}
-                      onClick={() => applySuggestion(s)}
+                      onClick={() => applySuggestion(s.word)}
                       style={{
                         textAlign: "left",
                         padding: "6px 8px",
@@ -250,7 +235,10 @@ export default function Home() {
                         cursor: "pointer",
                       }}
                     >
-                      {s}
+                      <strong>{s.word}</strong>
+                      <div style={{ fontSize: 12, color: "#555" }}>
+                        {s.explanation}
+                      </div>
                     </button>
                   ))}
                 </div>
