@@ -3,10 +3,27 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { word } = req.body;
-
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const { word, context } = req.body;
+
+    const prompt = `
+You are a helpful text editor assistant.
+Your task: suggest 3–5 alternative words or phrases that would fit naturally in this text.
+
+Current word: "${word}"
+Context (surrounding text):
+---
+${context}
+---
+
+Guidelines:
+- Suggestions must preserve the meaning of the sentence.
+- Use natural language (not code or JSON).
+- Keep them short and clear.
+- Return only the suggestions, each on a new line.
+    `;
+
+    const resp = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -14,37 +31,27 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "gpt-4.1-mini",
-        input: `Suggest two synonyms for the word "${word}" in JSON array format.`,
+        input: prompt,
       }),
     });
 
-    const data = await response.json();
-    console.log("🔍 RAW OpenAI response:", JSON.stringify(data, null, 2));
+    const data = await resp.json();
 
-    let text = "";
-
-    // מוודאים שיש תוכן
-    if (data.output && data.output[0] && data.output[0].content[0]) {
-      text = data.output[0].content[0].text;
-    } else if (data.output_text) {
-      text = data.output_text;
+    if (!resp.ok) {
+      console.error("API error:", data);
+      return res.status(500).json({ error: "API request failed" });
     }
 
-    // ניקוי עטיפות ```json ו-```
-    if (text) {
-      text = text.replace(/```json|```/g, "").trim();
-    }
+    // מפענח את התשובה לשורות
+    const text = data.output_text || "";
+    const suggestions = text
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
 
-    let suggestions = [];
-    try {
-      suggestions = JSON.parse(text);
-    } catch (err) {
-      console.error("❌ JSON parse error:", err, "on text:", text);
-    }
-
-    res.status(200).json({ suggestions });
-  } catch (error) {
-    console.error("API error:", error);
-    res.status(500).json({ error: "Failed to fetch suggestions" });
+    return res.status(200).json({ suggestions });
+  } catch (err) {
+    console.error("Server error:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
