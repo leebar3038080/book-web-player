@@ -1,70 +1,66 @@
-// pages/index.js
-import { useState } from "react";
-import chapterOne from "../chapter_one_shimmer.json";
+import { useState, useEffect } from "react";
 
 export default function Home() {
-  const [loading, setLoading] = useState(false);
+  const [text, setText] = useState("");
   const [audioUrl, setAudioUrl] = useState(null);
 
-  const playAudio = async () => {
+  // לטעון את הטקסט מתוך chapter_one_shimmer.json
+  useEffect(() => {
+    async function loadText() {
+      try {
+        const res = await fetch("/chapter_one_shimmer.json");
+        const data = await res.json();
+
+        // מניח שיש שדה "text" או "content"
+        setText(data.text || data.content || JSON.stringify(data));
+      } catch (err) {
+        console.error("שגיאה בטעינת JSON:", err);
+      }
+    }
+    loadText();
+  }, []);
+
+  // לשלוח טקסט ל־API ולייצר אודיו
+  async function handlePlay() {
     try {
-      setLoading(true);
-      setAudioUrl(null);
-
-      // לוקחים את הטקסט מה־JSON
-      const text = chapterOne.text;
-
-      // שולחים בקשה ל־API שלנו (tts.js)
-      const response = await fetch("/api/tts", {
+      const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch audio");
+      if (!res.ok) {
+        throw new Error("TTS API error");
       }
 
-      // מקבלים Blob ומייצרים כתובת לנגן
-      const blob = await response.blob();
+      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       setAudioUrl(url);
 
-      // מנגנים אוטומטית
+      // לנגן אוטומטית
       const audio = new Audio(url);
       audio.play();
     } catch (err) {
-      console.error("Error:", err);
-      alert("בעיה בהשמעת הסאונד");
-    } finally {
-      setLoading(false);
+      console.error("שגיאה בהשמעת אודיו:", err);
+      alert("בעיה בהשמעת האודיו");
     }
-  };
+  }
 
   return (
     <div style={{ padding: 20 }}>
       <h1>WhisperX Web Player</h1>
-
-      {/* מציג את הטקסט מה־JSON */}
-      <div
-        style={{
-          whiteSpace: "pre-wrap",
-          border: "1px solid #ccc",
-          padding: "10px",
-          marginBottom: "20px",
-          maxWidth: "600px",
-        }}
-      >
-        {chapterOne.text}
+      <div>
+        <textarea
+          style={{ width: "100%", height: "200px" }}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
       </div>
-
-      <button onClick={playAudio} disabled={loading}>
-        {loading ? "טוען..." : "השמע סאונד"}
-      </button>
+      <button onClick={handlePlay}>▶️ נגן</button>
 
       {audioUrl && (
-        <div style={{ marginTop: 20 }}>
-          <audio controls src={audioUrl}></audio>
+        <div>
+          <audio controls src={audioUrl} />
         </div>
       )}
     </div>
