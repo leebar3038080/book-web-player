@@ -4,8 +4,9 @@ export default function Home() {
   const [words, setWords] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [speed, setSpeed] = useState(1.0);
-  const [audioSrc, setAudioSrc] = useState(null);
-  const audioRef = useRef(null);
+
+  const audioRef = useRef(null); // נגן ראשי MP3
+  const replacementRef = useRef(null); // נגן שני למילים מוחלפות
   const wordRefs = useRef([]);
 
   const [popup, setPopup] = useState({
@@ -18,7 +19,9 @@ export default function Home() {
     error: null,
   });
 
-  // טוען את המילים מהקובץ JSON
+  // שמירת מילים מוחלפות
+  const [replacements, setReplacements] = useState({});
+
   useEffect(() => {
     fetch("/chapter_one_shimmer.json")
       .then((res) => res.json())
@@ -35,13 +38,9 @@ export default function Home() {
           );
         });
         setWords(flat);
-
-        // הפעלה ראשונית של TTS לכל הטקסט
-        generateTTS(flat.map((w) => w.text).join(" "));
       });
   }, []);
 
-  // סינכרון בין אודיו לבין מילים
   useEffect(() => {
     if (!audioRef.current) return;
     const interval = setInterval(() => {
@@ -54,9 +53,11 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [words]);
 
-  // פונקציות שליטה
   const handlePlay = () => audioRef.current?.play();
-  const handlePause = () => audioRef.current?.pause();
+  const handlePause = () => {
+    audioRef.current?.pause();
+    replacementRef.current?.pause();
+  };
   const handleStop = () => {
     if (!audioRef.current) return;
     audioRef.current.pause();
@@ -76,26 +77,6 @@ export default function Home() {
     setSpeed(newSpeed);
   };
 
-  // יצירת TTS חדש
-  async function generateTTS(text) {
-    try {
-      const resp = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-
-      if (!resp.ok) throw new Error("TTS failed");
-
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      setAudioSrc(url);
-    } catch (err) {
-      console.error("TTS error:", err);
-    }
-  }
-
-  // הקשר סביב מילה
   function getContext(index) {
     const spanBack = 40;
     const spanForward = 20;
@@ -104,8 +85,10 @@ export default function Home() {
     return words.slice(start, end).map((w) => w.text).join(" ");
   }
 
-  // לחיצה על מילה
   async function handleWordClick(e, index) {
+    // עצירה אוטומטית של הקריינות
+    handlePause();
+
     const rect = e.target.getBoundingClientRect();
     const x = rect.left + window.scrollX;
     const y = rect.top + window.scrollY + rect.height + 6;
@@ -132,17 +115,16 @@ export default function Home() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Request failed");
 
-      // מוסיפים את המילה המקורית כאופציה
-      const original = words[index]?.original;
-      const suggestions = data?.suggestions || [];
-      if (original && !suggestions.find((s) => s.word === original)) {
-        suggestions.push({ word: original, isRecommended: false, isOriginal: true });
-      }
+      // מוסיף גם את המילה המקורית לרשימת ההצעות
+      const suggestionsWithOriginal = [
+        { word: words[index].original, isRecommended: false, isOriginal: true },
+        ...(data?.suggestions || []),
+      ];
 
       setPopup((p) => ({
         ...p,
         loading: false,
-        suggestions,
+        suggestions: suggestionsWithOriginal,
       }));
     } catch (err) {
       setPopup((p) => ({
@@ -153,50 +135,81 @@ export default function Home() {
     }
   }
 
-  // החלפת מילה + יצירת TTS חדש
-  async function applySuggestion(word, index) {
+  async function applySuggestion(word) {
     if (popup.index == null) return;
+    const idx = popup.index;
 
     const next = [...words];
-    next[popup.index] = { ...next[popup.index], text: word };
+    next[idx] = { ...next[idx], text: word };
     setWords(next);
 
-    // סוגרים פופאפ
-    closePopup();
+    // בקשת אודיו מהמנוע
+    try {
+      const resp = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: word }),
+      });
+      if (!resp.ok) throw new Error("TTS failed");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
 
-    // עוצרים אודיו
-    if (audioRef.current) {
-      audioRef.current.pause();
+      setReplacements((r) => ({
+        ...r,
+        [idx]: url,
+      }));
+    } catch (err) {
+      console.error("TTS error", err);
     }
 
-    // טקסט מלא חדש
-    const newText = next.map((w) => w.text).join(" ");
+    closePopup();
 
-    // יוצרים TTS חדש
-    await generateTTS(newText);
-
-    // חזרה חצי שורה אחורה (10 מילים לפני המילה שנבחרה)
-    const backIndex = Math.max(0, popup.index - 10);
-    setCurrentIndex(backIndex);
-
-    // מחכים שהאודיו החדש יטען ומנגנים
-    setTimeout(() => {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0; // תמיד מתחיל מההתחלה
-        audioRef.current.play();
-      }
-    }, 500);
+    // חזרה קצת אחורה כדי לשמוע שוב
+    if (audioRef.current) {
+      audioRef.current.currentTime = Math.max(0, words[idx].start - 1);
+      audioRef.current.play();
+    }
   }
 
   function closePopup() {
     setPopup((p) => ({ ...p, visible: false }));
+    audioRef.current?.play();
   }
+
+  // טיפול בקליק ימני לניגון מנקודה
+  function handleWordRightClick(e, index) {
+    e.preventDefault();
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = words[index].start;
+    audioRef.current.play();
+  }
+
+  // מעקב אחרי מילים מוחלפות
+  useEffect(() => {
+    if (!audioRef.current || !replacementRef.current) return;
+    if (currentIndex in replacements) {
+      const url = replacements[currentIndex];
+      if (!url) return;
+      audioRef.current.pause();
+      replacementRef.current.src = url;
+      replacementRef.current.play();
+      replacementRef.current.onended = () => {
+        if (audioRef.current) {
+          audioRef.current.currentTime = words[currentIndex].end;
+          audioRef.current.play();
+        }
+      };
+    }
+  }, [currentIndex, replacements, words]);
 
   return (
     <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
       <h1>WhisperX Web Player</h1>
 
-      <audio ref={audioRef} src={audioSrc || ""} hidden />
+      <audio ref={audioRef}>
+        <source src="/chapter_one_shimmer.mp3" type="audio/mpeg" />
+      </audio>
+      <audio ref={replacementRef} hidden />
 
       <div style={{ marginBottom: 20 }}>
         <button onClick={handlePlay}>▶ Play</button>
@@ -225,6 +238,7 @@ export default function Home() {
             key={i}
             ref={(el) => (wordRefs.current[i] = el)}
             onClick={(e) => handleWordClick(e, i)}
+            onContextMenu={(e) => handleWordRightClick(e, i)}
             style={{
               background: i === currentIndex ? "yellow" : "transparent",
               marginRight: 4,
@@ -286,7 +300,7 @@ export default function Home() {
                   {popup.suggestions.map((s, idx) => (
                     <button
                       key={idx}
-                      onClick={() => applySuggestion(s.word, popup.index)}
+                      onClick={() => applySuggestion(s.word)}
                       style={{
                         textAlign: "left",
                         padding: "6px 8px",
@@ -297,7 +311,7 @@ export default function Home() {
                         fontWeight: s.isRecommended ? "bold" : "normal",
                       }}
                     >
-                      {s.word} {s.isOriginal ? "(מקור)" : ""}{" "}
+                      {s.word} {s.isOriginal ? "(מקור)" : ""}
                       {s.isRecommended ? "⭐" : ""}
                     </button>
                   ))}
