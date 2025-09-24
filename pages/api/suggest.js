@@ -44,7 +44,17 @@ export default async function handler(req, res) {
     }
 
     const data = await response.json();
-    const text = (data && data.output_text) || "[]";
+
+    // 🔍 הדפסה ללוגים של Vercel
+    console.log("🔍 RAW OpenAI response:", JSON.stringify(data, null, 2));
+
+    // מנסים למצוא טקסט מהפלט
+    let text = "";
+    if (data.output_text) {
+      text = data.output_text;
+    } else if (data.output?.[0]?.content?.[0]?.text) {
+      text = data.output[0].content[0].text;
+    }
 
     let suggestions = [];
     try {
