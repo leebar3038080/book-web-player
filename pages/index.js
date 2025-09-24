@@ -1,53 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import chapterOne from "../data/chapter_one_shimmer.json";
 
 export default function Home() {
-  const [words, setWords] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(-1);
-  const audioRef = useRef(null);
+  const [text, setText] = useState("");
 
   useEffect(() => {
-    // נטען את המילים מה-API
-    fetch("/api/book")
-      .then(res => res.json())
-      .then(data => {
-        const flat = [];
-        data.segments.forEach(seg => {
-          seg.words.forEach(w => flat.push(w));
-        });
-        setWords(flat);
-      });
+    // נטען את הטקסט של הפרק הראשון מהקובץ JSON
+    if (chapterOne && chapterOne.chapters && chapterOne.chapters.length > 0) {
+      setText(chapterOne.chapters[0].text);
+    }
   }, []);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const audio = audioRef.current;
-      if (!audio || !words.length) return;
-      const t = audio.currentTime;
-      const idx = words.findIndex(w => t >= w.start && t < w.end);
-      if (idx !== -1) setCurrentIndex(idx);
-    }, 100);
-    return () => clearInterval(interval);
-  }, [words]);
-
   return (
-    <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
-      <h1>WhisperX Web Player</h1>
-      <audio controls ref={audioRef}>
-        <source src="/chapter_one_shimmer.mp3" type="audio/mpeg" />
+    <div style={{ padding: "20px", fontFamily: "Arial, sans-serif", direction: "rtl" }}>
+      <h1>📖 פרק ראשון</h1>
+      <p style={{ whiteSpace: "pre-line", lineHeight: "1.6" }}>{text}</p>
+
+      <h2>🔊 קריינות</h2>
+      <audio controls style={{ width: "100%" }}>
+        <source src="/api/tts?chapter=1" type="audio/mpeg" />
+        הדפדפן שלך לא תומך בנגן אודיו
       </audio>
-      <div style={{ marginTop: "20px", lineHeight: "1.8" }}>
-        {words.map((w, i) => (
-          <span
-            key={i}
-            style={{
-              background: i === currentIndex ? "yellow" : "transparent",
-              marginRight: "4px"
-            }}
-          >
-            {w.word}
-          </span>
-        ))}
-      </div>
     </div>
   );
 }
