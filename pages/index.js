@@ -19,14 +19,15 @@ export default function Home() {
           seg.words.forEach((w) =>
             flat.push({
               text: w.word,
-              original: w.word, // נשמור את המקור
+              original: w.word,
               start: w.start,
               end: w.end,
             })
           );
         });
         setWords(flat);
-      });
+      })
+      .catch((err) => console.error("Error loading JSON:", err));
   }, []);
 
   useEffect(() => {
@@ -68,35 +69,43 @@ export default function Home() {
   // קליק שמאלי – הצעות
   const handleWordClick = async (i, e) => {
     e.preventDefault();
-    const word = words[i];
-    const context = words
-      .slice(Math.max(0, i - 10), i + 10)
-      .map((w) => w.text)
-      .join(" ");
+    try {
+      const word = words[i];
+      const context = words
+        .slice(Math.max(0, i - 10), i + 10)
+        .map((w) => w.text)
+        .join(" ");
 
-    const res = await fetch("/api/suggest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ word: word.text, context }),
-    });
-    const data = await res.json();
+      const res = await fetch("/api/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word: word.text, context }),
+      });
+      const data = await res.json();
 
-    let suggestions = data.suggestions || [];
+      let suggestions = Array.isArray(data?.suggestions)
+        ? data.suggestions
+        : [];
 
-    // אם המילה שונתה – נוסיף את המקור בראש
-    if (word.text !== word.original) {
-      suggestions = [
-        word.original + " (original)",
-        ...suggestions,
-      ];
+      if (word.text !== word.original) {
+        suggestions = [word.original + " (original)", ...suggestions];
+      }
+
+      setPopup({
+        x: e.clientX || 100,
+        y: e.clientY || 100,
+        index: i,
+        suggestions,
+      });
+    } catch (err) {
+      console.error("Suggestion error:", err);
+      setPopup({
+        x: e.clientX || 100,
+        y: e.clientY || 100,
+        index: i,
+        suggestions: [],
+      });
     }
-
-    setPopup({
-      x: e.clientX,
-      y: e.clientY,
-      index: i,
-      suggestions,
-    });
   };
 
   const applySuggestion = (i, suggestion) => {
@@ -110,8 +119,8 @@ export default function Home() {
   const handleContextMenu = (i, e) => {
     e.preventDefault();
     setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
+      x: e.clientX || 100,
+      y: e.clientY || 100,
       index: i,
     });
   };
@@ -175,13 +184,13 @@ export default function Home() {
         ))}
       </div>
 
-      {/* פופאפ הצעות (קליק שמאלי) */}
+      {/* פופאפ הצעות */}
       {popup && (
         <div
           style={{
             position: "absolute",
-            top: popup.y + 10,
-            left: popup.x + 10,
+            top: popup.y,
+            left: popup.x,
             border: "1px solid #333",
             background: "white",
             padding: 10,
