@@ -1,26 +1,43 @@
-import { useEffect, useState } from "react";
-import chapterOne from "../data/chapter_one_shimmer.json";
+import { useState } from "react";
+import chapterOne from "../chapter_one_shimmer.json";
 
 export default function Home() {
-  const [text, setText] = useState("");
+  const [audioSrc, setAudioSrc] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    // נטען את הטקסט של הפרק הראשון מהקובץ JSON
-    if (chapterOne && chapterOne.chapters && chapterOne.chapters.length > 0) {
-      setText(chapterOne.chapters[0].text);
+  const playAudio = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/tts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: chapterOne.text }),
+      });
+
+      const data = await response.json();
+      setAudioSrc(data.url);
+    } catch (error) {
+      console.error("Error generating audio:", error);
     }
-  }, []);
+    setLoading(false);
+  };
 
   return (
-    <div style={{ padding: "20px", fontFamily: "Arial, sans-serif", direction: "rtl" }}>
-      <h1>📖 פרק ראשון</h1>
-      <p style={{ whiteSpace: "pre-line", lineHeight: "1.6" }}>{text}</p>
+    <div style={{ padding: "2rem", fontFamily: "Arial" }}>
+      <h1>WhisperX Web Player</h1>
+      <p>{chapterOne.text}</p>
 
-      <h2>🔊 קריינות</h2>
-      <audio controls style={{ width: "100%" }}>
-        <source src="/api/tts?chapter=1" type="audio/mpeg" />
-        הדפדפן שלך לא תומך בנגן אודיו
-      </audio>
+      <button onClick={playAudio} disabled={loading}>
+        {loading ? "Generating..." : "Play Audio"}
+      </button>
+
+      {audioSrc && (
+        <audio controls autoPlay src={audioSrc} style={{ display: "block", marginTop: "1rem" }}>
+          Your browser does not support the audio element.
+        </audio>
+      )}
     </div>
   );
 }
