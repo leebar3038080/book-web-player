@@ -42,8 +42,19 @@ Guidelines:
       return res.status(500).json({ error: "API request failed" });
     }
 
-    // מפענח את התשובה לשורות
-    const text = data.output_text || "";
+    // מפענח את התשובה מהשדה הנכון
+    let text = "";
+
+    if (data.output_text) {
+      text = data.output_text;
+    } else if (
+      data.output &&
+      Array.isArray(data.output) &&
+      data.output[0]?.content?.[0]?.text
+    ) {
+      text = data.output[0].content[0].text;
+    }
+
     const suggestions = text
       .split("\n")
       .map((s) => s.trim())
