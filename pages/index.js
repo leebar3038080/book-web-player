@@ -4,6 +4,7 @@ export default function Home() {
   const [words, setWords] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [speed, setSpeed] = useState(1.0);
+  const [audioSrc, setAudioSrc] = useState(null);
   const audioRef = useRef(null);
   const wordRefs = useRef([]);
 
@@ -17,9 +18,7 @@ export default function Home() {
     error: null,
   });
 
-  const [originalWords, setOriginalWords] = useState({});
-  const [popupOpenedByClick, setPopupOpenedByClick] = useState(false);
-
+  // טוען את המילים מהקובץ JSON
   useEffect(() => {
     fetch("/chapter_one_shimmer.json")
       .then((res) => res.json())
@@ -31,13 +30,18 @@ export default function Home() {
               text: w.word,
               start: w.start,
               end: w.end,
+              original: w.word,
             })
           );
         });
         setWords(flat);
+
+        // הפעלה ראשונית של TTS לכל הטקסט
+        generateTTS(flat.map((w) => w.text).join(" "));
       });
   }, []);
 
+  // סינכרון בין אודיו לבין מילים
   useEffect(() => {
     if (!audioRef.current) return;
     const interval = setInterval(() => {
@@ -50,6 +54,7 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [words]);
 
+  // פונקציות שליטה
   const handlePlay = () => audioRef.current?.play();
   const handlePause = () => audioRef.current?.pause();
   const handleStop = () => {
@@ -71,6 +76,26 @@ export default function Home() {
     setSpeed(newSpeed);
   };
 
+  // יצירת TTS חדש
+  async function generateTTS(text) {
+    try {
+      const resp = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!resp.ok) throw new Error("TTS failed");
+
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      setAudioSrc(url);
+    } catch (err) {
+      console.error("TTS error:", err);
+    }
+  }
+
+  // הקשר סביב מילה
   function getContext(index) {
     const spanBack = 40;
     const spanForward = 20;
@@ -79,13 +104,8 @@ export default function Home() {
     return words.slice(start, end).map((w) => w.text).join(" ");
   }
 
+  // לחיצה על מילה
   async function handleWordClick(e, index) {
-    // עצירת קריינות אוטומטית
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-    setPopupOpenedByClick(true);
-
     const rect = e.target.getBoundingClientRect();
     const x = rect.left + window.scrollX;
     const y = rect.top + window.scrollY + rect.height + 6;
@@ -112,12 +132,11 @@ export default function Home() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Request failed");
 
-      let suggestions = data?.suggestions || [];
-
-      // הוספת המילה המקורית אם שונתה
-      const orig = originalWords[index];
-      if (orig) {
-        suggestions = [{ word: orig, isOriginal: true }, ...suggestions];
+      // מוסיפים את המילה המקורית כאופציה
+      const original = words[index]?.original;
+      const suggestions = data?.suggestions || [];
+      if (original && !suggestions.find((s) => s.word === original)) {
+        suggestions.push({ word: original, isRecommended: false, isOriginal: true });
       }
 
       setPopup((p) => ({
@@ -134,67 +153,50 @@ export default function Home() {
     }
   }
 
-  function applySuggestion(wordObj) {
+  // החלפת מילה + יצירת TTS חדש
+  async function applySuggestion(word, index) {
     if (popup.index == null) return;
-    const idx = popup.index;
 
-    // אם זו המילה המקורית - מחזירים
-    if (wordObj.isOriginal) {
-      const orig = originalWords[idx];
-      if (orig) {
-        const next = [...words];
-        next[idx] = { ...next[idx], text: orig };
-        setWords(next);
-        // מנקים את המקור כי חזרנו
-        setOriginalWords((prev) => {
-          const copy = { ...prev };
-          delete copy[idx];
-          return copy;
-        });
-      }
-    } else {
-      // שמירת מילה מקורית אם עוד לא שמורה
-      if (!originalWords[idx]) {
-        setOriginalWords((prev) => ({ ...prev, [idx]: words[idx].text }));
-      }
-      const next = [...words];
-      next[idx] = { ...next[idx], text: wordObj.word };
-      setWords(next);
+    const next = [...words];
+    next[popup.index] = { ...next[popup.index], text: word };
+    setWords(next);
 
-      // חזרה אחורה חצי משפט (2 שניות)
+    // סוגרים פופאפ
+    closePopup();
+
+    // עוצרים אודיו
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+
+    // טקסט מלא חדש
+    const newText = next.map((w) => w.text).join(" ");
+
+    // יוצרים TTS חדש
+    await generateTTS(newText);
+
+    // חזרה חצי שורה אחורה (10 מילים לפני המילה שנבחרה)
+    const backIndex = Math.max(0, popup.index - 10);
+    setCurrentIndex(backIndex);
+
+    // מחכים שהאודיו החדש יטען ומנגנים
+    setTimeout(() => {
       if (audioRef.current) {
-        const backTime = Math.max(0, words[idx].start - 2);
-        audioRef.current.currentTime = backTime;
+        audioRef.current.currentTime = 0; // תמיד מתחיל מההתחלה
         audioRef.current.play();
       }
-    }
-    closePopup();
+    }, 500);
   }
 
   function closePopup() {
     setPopup((p) => ({ ...p, visible: false }));
-    if (popupOpenedByClick && audioRef.current) {
-      audioRef.current.play();
-    }
-    setPopupOpenedByClick(false);
-  }
-
-  // קליק ימני → תפריט נגן מפה
-  function handleWordRightClick(e, index) {
-    e.preventDefault();
-    if (audioRef.current) {
-      audioRef.current.currentTime = words[index].start;
-      audioRef.current.play();
-    }
   }
 
   return (
     <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
       <h1>WhisperX Web Player</h1>
 
-      <audio ref={audioRef} hidden>
-        <source src="/chapter_one_shimmer.mp3" type="audio/mpeg" />
-      </audio>
+      <audio ref={audioRef} src={audioSrc || ""} hidden />
 
       <div style={{ marginBottom: 20 }}>
         <button onClick={handlePlay}>▶ Play</button>
@@ -223,7 +225,6 @@ export default function Home() {
             key={i}
             ref={(el) => (wordRefs.current[i] = el)}
             onClick={(e) => handleWordClick(e, i)}
-            onContextMenu={(e) => handleWordRightClick(e, i)}
             style={{
               background: i === currentIndex ? "yellow" : "transparent",
               marginRight: 4,
@@ -285,7 +286,7 @@ export default function Home() {
                   {popup.suggestions.map((s, idx) => (
                     <button
                       key={idx}
-                      onClick={() => applySuggestion(s)}
+                      onClick={() => applySuggestion(s.word, popup.index)}
                       style={{
                         textAlign: "left",
                         padding: "6px 8px",
@@ -296,8 +297,8 @@ export default function Home() {
                         fontWeight: s.isRecommended ? "bold" : "normal",
                       }}
                     >
-                      {s.word} {s.isOriginal ? "(מקור)" : ""}
-                      {s.isRecommended ? " ⭐" : ""}
+                      {s.word} {s.isOriginal ? "(מקור)" : ""}{" "}
+                      {s.isRecommended ? "⭐" : ""}
                     </button>
                   ))}
                 </div>
