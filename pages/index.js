@@ -70,10 +70,12 @@ export default function Home() {
     setSpeed(newSpeed);
   };
 
-  // הפקת הקשר סביב מילה
-  function getContext(index, span = 20) {
-    const start = Math.max(0, index - span);
-    const end = Math.min(words.length, index + span + 1);
+  // הפקת הקשר סביב מילה (חלון גדול יותר: 40 מילים אחורה, 20 קדימה)
+  function getContext(index) {
+    const spanBack = 40;
+    const spanForward = 20;
+    const start = Math.max(0, index - spanBack);
+    const end = Math.min(words.length, index + spanForward + 1);
     return words.slice(start, end).map((w) => w.text).join(" ");
   }
 
