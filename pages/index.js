@@ -6,11 +6,10 @@ export default function Home() {
   const [speed, setSpeed] = useState(1.0);
   const audioRef = useRef(null);
   const wordRefs = useRef([]);
-
-  const [popup, setPopup] = useState(null); // להצעות
-  const [contextMenu, setContextMenu] = useState(null); // לתפריט ימני
+  const [selectedIndex, setSelectedIndex] = useState(null);
 
   useEffect(() => {
+    // טוען את המילים מהקובץ JSON
     fetch("/chapter_one_shimmer.json")
       .then((res) => res.json())
       .then((data) => {
@@ -19,15 +18,14 @@ export default function Home() {
           seg.words.forEach((w) =>
             flat.push({
               text: w.word,
-              original: w.word,
+              original: w.word, // נשמור גם את המילה המקורית
               start: w.start,
               end: w.end,
             })
           );
         });
         setWords(flat);
-      })
-      .catch((err) => console.error("Error loading JSON:", err));
+      });
   }, []);
 
   useEffect(() => {
@@ -42,8 +40,18 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [words]);
 
-  const handlePlay = () => audioRef.current?.play();
-  const handlePause = () => audioRef.current?.pause();
+  const handlePlay = () => {
+    if (audioRef.current) {
+      audioRef.current.play();
+    }
+  };
+
+  const handlePause = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+  };
+
   const handleStop = () => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -51,6 +59,7 @@ export default function Home() {
       setCurrentIndex(-1);
     }
   };
+
   const handleSlower = () => {
     if (audioRef.current) {
       const newSpeed = Math.max(0.5, speed - 0.1);
@@ -58,6 +67,7 @@ export default function Home() {
       setSpeed(newSpeed);
     }
   };
+
   const handleFaster = () => {
     if (audioRef.current) {
       const newSpeed = Math.min(1.5, speed + 0.1);
@@ -66,70 +76,23 @@ export default function Home() {
     }
   };
 
-  // קליק שמאלי – הצעות
-  const handleWordClick = async (i, e) => {
-    e.preventDefault();
-    try {
-      const word = words[i];
-      const context = words
-        .slice(Math.max(0, i - 10), i + 10)
-        .map((w) => w.text)
-        .join(" ");
+  const handleWordClick = (i) => {
+    setSelectedIndex(i);
+  };
 
-      const res = await fetch("/api/suggest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word: word.text, context }),
-      });
-      const data = await res.json();
-
-      let suggestions = Array.isArray(data?.suggestions)
-        ? data.suggestions
-        : [];
-
-      if (word.text !== word.original) {
-        suggestions = [word.original + " (original)", ...suggestions];
-      }
-
-      setPopup({
-        x: e.clientX || 100,
-        y: e.clientY || 100,
-        index: i,
-        suggestions,
-      });
-    } catch (err) {
-      console.error("Suggestion error:", err);
-      setPopup({
-        x: e.clientX || 100,
-        y: e.clientY || 100,
-        index: i,
-        suggestions: [],
-      });
+  const restoreOriginal = () => {
+    if (selectedIndex !== null) {
+      const copy = [...words];
+      copy[selectedIndex].text = copy[selectedIndex].original;
+      setWords(copy);
+      setSelectedIndex(null);
     }
   };
 
-  const applySuggestion = (i, suggestion) => {
-    const copy = [...words];
-    copy[i].text = suggestion.replace(" (original)", "");
-    setWords(copy);
-    setPopup(null);
-  };
-
-  // קליק ימני – השמעה מהנקודה
-  const handleContextMenu = (i, e) => {
-    e.preventDefault();
-    setContextMenu({
-      x: e.clientX || 100,
-      y: e.clientY || 100,
-      index: i,
-    });
-  };
-
-  const playFromHere = (i) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = words[i].start;
+  const playFromHere = () => {
+    if (selectedIndex !== null && audioRef.current) {
+      audioRef.current.currentTime = words[selectedIndex].start;
       audioRef.current.play();
-      setContextMenu(null);
     }
   };
 
@@ -137,6 +100,7 @@ export default function Home() {
     <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
       <h1>WhisperX Web Player</h1>
 
+      {/* נגן חבוי - לא מציג את סרגל השליטה של הדפדפן */}
       <audio ref={audioRef} hidden>
         <source src="/chapter_one_shimmer.mp3" type="audio/mpeg" />
       </audio>
@@ -151,7 +115,29 @@ export default function Home() {
         <span style={{ marginLeft: 10 }}>Speed: {speed.toFixed(1)}x</span>
       </div>
 
-      {/* טקסט */}
+      {/* תפריט לפעולות על מילה מסומנת */}
+      {selectedIndex !== null && (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: 10,
+            border: "1px solid #aaa",
+            borderRadius: 6,
+            background: "#f9f9f9",
+          }}
+        >
+          <p>
+            מילה נבחרה:{" "}
+            <strong>{words[selectedIndex]?.text}</strong>
+          </p>
+          <button onClick={restoreOriginal}>🔄 חזור למקור</button>
+          <button onClick={playFromHere} style={{ marginLeft: 10 }}>
+            🎧 השמע מכאן
+          </button>
+        </div>
+      )}
+
+      {/* רובריקה עם כל הטקסט */}
       <div
         style={{
           border: "1px solid #ddd",
@@ -159,7 +145,7 @@ export default function Home() {
           lineHeight: 1.8,
           fontSize: 18,
           borderRadius: 8,
-          width: "100%",
+          width: "100%", // תופס את כל הרוחב
           whiteSpace: "normal",
           wordWrap: "break-word",
           marginTop: 20,
@@ -169,10 +155,14 @@ export default function Home() {
           <span
             key={i}
             ref={(el) => (wordRefs.current[i] = el)}
-            onClick={(e) => handleWordClick(i, e)}
-            onContextMenu={(e) => handleContextMenu(i, e)}
+            onClick={() => handleWordClick(i)}
             style={{
-              background: i === currentIndex ? "yellow" : "transparent",
+              background:
+                i === currentIndex
+                  ? "yellow"
+                  : i === selectedIndex
+                  ? "#a0d8ef"
+                  : "transparent",
               marginRight: 4,
               borderRadius: 4,
               cursor: "pointer",
@@ -183,81 +173,6 @@ export default function Home() {
           </span>
         ))}
       </div>
-
-      {/* פופאפ הצעות */}
-      {popup && (
-        <div
-          style={{
-            position: "absolute",
-            top: popup.y,
-            left: popup.x,
-            border: "1px solid #333",
-            background: "white",
-            padding: 10,
-            borderRadius: 6,
-            zIndex: 1000,
-          }}
-        >
-          {popup.suggestions.length > 0 ? (
-            popup.suggestions.map((s, idx) => (
-              <div
-                key={idx}
-                style={{ padding: "4px 8px", cursor: "pointer" }}
-                onClick={() => applySuggestion(popup.index, s)}
-              >
-                {s}
-              </div>
-            ))
-          ) : (
-            <div>אין הצעות</div>
-          )}
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 12,
-              color: "#666",
-              cursor: "pointer",
-            }}
-            onClick={() => setPopup(null)}
-          >
-            סגור ✖
-          </div>
-        </div>
-      )}
-
-      {/* תפריט קליק ימני */}
-      {contextMenu && (
-        <div
-          style={{
-            position: "absolute",
-            top: contextMenu.y,
-            left: contextMenu.x,
-            border: "1px solid #333",
-            background: "white",
-            padding: 8,
-            borderRadius: 6,
-            zIndex: 1000,
-          }}
-        >
-          <div
-            style={{ padding: "4px 8px", cursor: "pointer" }}
-            onClick={() => playFromHere(contextMenu.index)}
-          >
-            🎧 השמע מכאן
-          </div>
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: "#666",
-              cursor: "pointer",
-            }}
-            onClick={() => setContextMenu(null)}
-          >
-            סגור ✖
-          </div>
-        </div>
-      )}
     </div>
   );
 }
