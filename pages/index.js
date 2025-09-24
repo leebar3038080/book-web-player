@@ -1,42 +1,71 @@
+// pages/index.js
 import { useState } from "react";
 import chapterOne from "../chapter_one_shimmer.json";
 
 export default function Home() {
-  const [audioSrc, setAudioSrc] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [audioUrl, setAudioUrl] = useState(null);
 
   const playAudio = async () => {
-    setLoading(true);
     try {
+      setLoading(true);
+      setAudioUrl(null);
+
+      // לוקחים את הטקסט מה־JSON
+      const text = chapterOne.text;
+
+      // שולחים בקשה ל־API שלנו (tts.js)
       const response = await fetch("/api/tts", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ text: chapterOne.text }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
       });
 
-      const data = await response.json();
-      setAudioSrc(data.url);
-    } catch (error) {
-      console.error("Error generating audio:", error);
+      if (!response.ok) {
+        throw new Error("Failed to fetch audio");
+      }
+
+      // מקבלים Blob ומייצרים כתובת לנגן
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      setAudioUrl(url);
+
+      // מנגנים אוטומטית
+      const audio = new Audio(url);
+      audio.play();
+    } catch (err) {
+      console.error("Error:", err);
+      alert("בעיה בהשמעת הסאונד");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div style={{ padding: "2rem", fontFamily: "Arial" }}>
+    <div style={{ padding: 20 }}>
       <h1>WhisperX Web Player</h1>
-      <p>{chapterOne.text}</p>
+
+      {/* מציג את הטקסט מה־JSON */}
+      <div
+        style={{
+          whiteSpace: "pre-wrap",
+          border: "1px solid #ccc",
+          padding: "10px",
+          marginBottom: "20px",
+          maxWidth: "600px",
+        }}
+      >
+        {chapterOne.text}
+      </div>
 
       <button onClick={playAudio} disabled={loading}>
-        {loading ? "Generating..." : "Play Audio"}
+        {loading ? "טוען..." : "השמע סאונד"}
       </button>
 
-      {audioSrc && (
-        <audio controls autoPlay src={audioSrc} style={{ display: "block", marginTop: "1rem" }}>
-          Your browser does not support the audio element.
-        </audio>
+      {audioUrl && (
+        <div style={{ marginTop: 20 }}>
+          <audio controls src={audioUrl}></audio>
+        </div>
       )}
     </div>
   );
