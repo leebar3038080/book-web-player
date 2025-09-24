@@ -17,12 +17,8 @@ export default function Home() {
     error: null,
   });
 
-  const [contextMenu, setContextMenu] = useState({
-    visible: false,
-    x: 0,
-    y: 0,
-    index: null,
-  });
+  const [originalWords, setOriginalWords] = useState({});
+  const [popupOpenedByClick, setPopupOpenedByClick] = useState(false);
 
   useEffect(() => {
     fetch("/chapter_one_shimmer.json")
@@ -33,7 +29,6 @@ export default function Home() {
           seg.words.forEach((w) =>
             flat.push({
               text: w.word,
-              original: w.word, // נוסיף גם את המקור
               start: w.start,
               end: w.end,
             })
@@ -85,11 +80,17 @@ export default function Home() {
   }
 
   async function handleWordClick(e, index) {
+    // עצירת קריינות אוטומטית
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    setPopupOpenedByClick(true);
+
     const rect = e.target.getBoundingClientRect();
     const x = rect.left + window.scrollX;
     const y = rect.top + window.scrollY + rect.height + 6;
 
-    const word = words[index];
+    const target = words[index]?.text;
     const context = getContext(index);
 
     setPopup({
@@ -106,19 +107,17 @@ export default function Home() {
       const resp = await fetch("/api/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word: word.text, context }),
+        body: JSON.stringify({ word: target, context }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Request failed");
 
       let suggestions = data?.suggestions || [];
 
-      // אם המילה שונתה – נוסיף גם את המקור בראש הרשימה
-      if (word.text !== word.original) {
-        suggestions = [
-          { word: word.original + " (original)", isRecommended: false },
-          ...suggestions,
-        ];
+      // הוספת המילה המקורית אם שונתה
+      const orig = originalWords[index];
+      if (orig) {
+        suggestions = [{ word: orig, isOriginal: true }, ...suggestions];
       }
 
       setPopup((p) => ({
@@ -135,41 +134,58 @@ export default function Home() {
     }
   }
 
-  function applySuggestion(word) {
+  function applySuggestion(wordObj) {
     if (popup.index == null) return;
-    const next = [...words];
-    next[popup.index] = {
-      ...next[popup.index],
-      text: word.replace(" (original)", ""),
-    };
-    setWords(next);
+    const idx = popup.index;
+
+    // אם זו המילה המקורית - מחזירים
+    if (wordObj.isOriginal) {
+      const orig = originalWords[idx];
+      if (orig) {
+        const next = [...words];
+        next[idx] = { ...next[idx], text: orig };
+        setWords(next);
+        // מנקים את המקור כי חזרנו
+        setOriginalWords((prev) => {
+          const copy = { ...prev };
+          delete copy[idx];
+          return copy;
+        });
+      }
+    } else {
+      // שמירת מילה מקורית אם עוד לא שמורה
+      if (!originalWords[idx]) {
+        setOriginalWords((prev) => ({ ...prev, [idx]: words[idx].text }));
+      }
+      const next = [...words];
+      next[idx] = { ...next[idx], text: wordObj.word };
+      setWords(next);
+
+      // חזרה אחורה חצי משפט (2 שניות)
+      if (audioRef.current) {
+        const backTime = Math.max(0, words[idx].start - 2);
+        audioRef.current.currentTime = backTime;
+        audioRef.current.play();
+      }
+    }
     closePopup();
   }
 
   function closePopup() {
     setPopup((p) => ({ ...p, visible: false }));
+    if (popupOpenedByClick && audioRef.current) {
+      audioRef.current.play();
+    }
+    setPopupOpenedByClick(false);
   }
 
-  // קליק ימני
-  function handleContextMenu(e, index) {
+  // קליק ימני → תפריט נגן מפה
+  function handleWordRightClick(e, index) {
     e.preventDefault();
-    setContextMenu({
-      visible: true,
-      x: e.clientX,
-      y: e.clientY,
-      index,
-    });
-  }
-
-  function playFromHere() {
-    if (contextMenu.index == null || !audioRef.current) return;
-    audioRef.current.currentTime = words[contextMenu.index].start;
-    audioRef.current.play();
-    setContextMenu((c) => ({ ...c, visible: false }));
-  }
-
-  function closeContextMenu() {
-    setContextMenu((c) => ({ ...c, visible: false }));
+    if (audioRef.current) {
+      audioRef.current.currentTime = words[index].start;
+      audioRef.current.play();
+    }
   }
 
   return (
@@ -207,7 +223,7 @@ export default function Home() {
             key={i}
             ref={(el) => (wordRefs.current[i] = el)}
             onClick={(e) => handleWordClick(e, i)}
-            onContextMenu={(e) => handleContextMenu(e, i)}
+            onContextMenu={(e) => handleWordRightClick(e, i)}
             style={{
               background: i === currentIndex ? "yellow" : "transparent",
               marginRight: 4,
@@ -220,7 +236,6 @@ export default function Home() {
         ))}
       </div>
 
-      {/* פופאפ הצעות */}
       {popup.visible && (
         <div
           style={{
@@ -270,9 +285,7 @@ export default function Home() {
                   {popup.suggestions.map((s, idx) => (
                     <button
                       key={idx}
-                      onClick={() =>
-                        applySuggestion(s.word || s.replace(" (original)", ""))
-                      }
+                      onClick={() => applySuggestion(s)}
                       style={{
                         textAlign: "left",
                         padding: "6px 8px",
@@ -283,47 +296,14 @@ export default function Home() {
                         fontWeight: s.isRecommended ? "bold" : "normal",
                       }}
                     >
-                      {s.word || s} {s.isRecommended ? "⭐" : ""}
+                      {s.word} {s.isOriginal ? "(מקור)" : ""}
+                      {s.isRecommended ? " ⭐" : ""}
                     </button>
                   ))}
                 </div>
               )}
             </>
           )}
-        </div>
-      )}
-
-      {/* תפריט קליק ימני */}
-      {contextMenu.visible && (
-        <div
-          style={{
-            position: "absolute",
-            left: contextMenu.x,
-            top: contextMenu.y,
-            background: "white",
-            border: "1px solid #333",
-            borderRadius: 6,
-            padding: 8,
-            zIndex: 9999,
-          }}
-        >
-          <div
-            style={{ cursor: "pointer", padding: "4px 8px" }}
-            onClick={playFromHere}
-          >
-            🎧 נגן מפה
-          </div>
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: "#666",
-              cursor: "pointer",
-            }}
-            onClick={closeContextMenu}
-          >
-            סגור ✖
-          </div>
         </div>
       )}
     </div>
