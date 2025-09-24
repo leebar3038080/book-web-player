@@ -17,6 +17,13 @@ export default function Home() {
     error: null,
   });
 
+  const [contextMenu, setContextMenu] = useState({
+    visible: false,
+    x: 0,
+    y: 0,
+    index: null,
+  });
+
   useEffect(() => {
     fetch("/chapter_one_shimmer.json")
       .then((res) => res.json())
@@ -26,6 +33,7 @@ export default function Home() {
           seg.words.forEach((w) =>
             flat.push({
               text: w.word,
+              original: w.word, // נוסיף גם את המקור
               start: w.start,
               end: w.end,
             })
@@ -81,7 +89,7 @@ export default function Home() {
     const x = rect.left + window.scrollX;
     const y = rect.top + window.scrollY + rect.height + 6;
 
-    const target = words[index]?.text;
+    const word = words[index];
     const context = getContext(index);
 
     setPopup({
@@ -98,15 +106,25 @@ export default function Home() {
       const resp = await fetch("/api/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word: target, context }),
+        body: JSON.stringify({ word: word.text, context }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Request failed");
 
+      let suggestions = data?.suggestions || [];
+
+      // אם המילה שונתה – נוסיף גם את המקור בראש הרשימה
+      if (word.text !== word.original) {
+        suggestions = [
+          { word: word.original + " (original)", isRecommended: false },
+          ...suggestions,
+        ];
+      }
+
       setPopup((p) => ({
         ...p,
         loading: false,
-        suggestions: data?.suggestions || [],
+        suggestions,
       }));
     } catch (err) {
       setPopup((p) => ({
@@ -120,13 +138,38 @@ export default function Home() {
   function applySuggestion(word) {
     if (popup.index == null) return;
     const next = [...words];
-    next[popup.index] = { ...next[popup.index], text: word };
+    next[popup.index] = {
+      ...next[popup.index],
+      text: word.replace(" (original)", ""),
+    };
     setWords(next);
     closePopup();
   }
 
   function closePopup() {
     setPopup((p) => ({ ...p, visible: false }));
+  }
+
+  // קליק ימני
+  function handleContextMenu(e, index) {
+    e.preventDefault();
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      index,
+    });
+  }
+
+  function playFromHere() {
+    if (contextMenu.index == null || !audioRef.current) return;
+    audioRef.current.currentTime = words[contextMenu.index].start;
+    audioRef.current.play();
+    setContextMenu((c) => ({ ...c, visible: false }));
+  }
+
+  function closeContextMenu() {
+    setContextMenu((c) => ({ ...c, visible: false }));
   }
 
   return (
@@ -164,6 +207,7 @@ export default function Home() {
             key={i}
             ref={(el) => (wordRefs.current[i] = el)}
             onClick={(e) => handleWordClick(e, i)}
+            onContextMenu={(e) => handleContextMenu(e, i)}
             style={{
               background: i === currentIndex ? "yellow" : "transparent",
               marginRight: 4,
@@ -176,6 +220,7 @@ export default function Home() {
         ))}
       </div>
 
+      {/* פופאפ הצעות */}
       {popup.visible && (
         <div
           style={{
@@ -225,7 +270,9 @@ export default function Home() {
                   {popup.suggestions.map((s, idx) => (
                     <button
                       key={idx}
-                      onClick={() => applySuggestion(s.word)}
+                      onClick={() =>
+                        applySuggestion(s.word || s.replace(" (original)", ""))
+                      }
                       style={{
                         textAlign: "left",
                         padding: "6px 8px",
@@ -236,13 +283,47 @@ export default function Home() {
                         fontWeight: s.isRecommended ? "bold" : "normal",
                       }}
                     >
-                      {s.word} {s.isRecommended ? "⭐" : ""}
+                      {s.word || s} {s.isRecommended ? "⭐" : ""}
                     </button>
                   ))}
                 </div>
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* תפריט קליק ימני */}
+      {contextMenu.visible && (
+        <div
+          style={{
+            position: "absolute",
+            left: contextMenu.x,
+            top: contextMenu.y,
+            background: "white",
+            border: "1px solid #333",
+            borderRadius: 6,
+            padding: 8,
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{ cursor: "pointer", padding: "4px 8px" }}
+            onClick={playFromHere}
+          >
+            🎧 נגן מפה
+          </div>
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 12,
+              color: "#666",
+              cursor: "pointer",
+            }}
+            onClick={closeContextMenu}
+          >
+            סגור ✖
+          </div>
         </div>
       )}
     </div>
