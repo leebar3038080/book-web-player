@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 export default function Home() {
   const [words, setWords] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
+  const [speed, setSpeed] = useState(1.0);
   const audioRef = useRef(null);
   const wordRefs = useRef([]);
 
@@ -37,13 +38,62 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [words]);
 
+  const handlePlay = () => {
+    if (audioRef.current) {
+      audioRef.current.play();
+    }
+  };
+
+  const handlePause = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+  };
+
+  const handleStop = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setCurrentIndex(-1);
+    }
+  };
+
+  const handleSlower = () => {
+    if (audioRef.current) {
+      const newSpeed = Math.max(0.5, speed - 0.1);
+      audioRef.current.playbackRate = newSpeed;
+      setSpeed(newSpeed);
+    }
+  };
+
+  const handleFaster = () => {
+    if (audioRef.current) {
+      const newSpeed = Math.min(1.5, speed + 0.1);
+      audioRef.current.playbackRate = newSpeed;
+      setSpeed(newSpeed);
+    }
+  };
+
   return (
     <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
       <h1>WhisperX Web Player</h1>
-      <audio controls ref={audioRef}>
+
+      {/* נגן חבוי - לא מציג את סרגל השליטה של הדפדפן */}
+      <audio ref={audioRef} hidden>
         <source src="/chapter_one_shimmer.mp3" type="audio/mpeg" />
       </audio>
 
+      {/* כפתורים לשליטה */}
+      <div style={{ marginBottom: 20 }}>
+        <button onClick={handlePlay}>▶ Play</button>
+        <button onClick={handlePause}>⏸ Pause</button>
+        <button onClick={handleStop}>⏹ Stop</button>
+        <button onClick={handleSlower}>⏪ Slower</button>
+        <button onClick={handleFaster}>⏩ Faster</button>
+        <span style={{ marginLeft: 10 }}>Speed: {speed.toFixed(1)}x</span>
+      </div>
+
+      {/* רובריקה עם כל הטקסט */}
       <div
         style={{
           border: "1px solid #ddd",
