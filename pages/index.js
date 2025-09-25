@@ -23,9 +23,6 @@ export default function Home() {
   // אינדקסים של מילים שהוחלפו (לצבוע בכחול)
   const [highlighted, setHighlighted] = useState(new Set());
 
-  // אינדקס מילה שנבחרה כרגע (לפופאפ)
-  const [activeIndex, setActiveIndex] = useState(null);
-
   // דגל שמונע חפיפה בין TTS למשפט ל-MP3
   const [isReplacing, setIsReplacing] = useState(false);
 
@@ -102,7 +99,6 @@ export default function Home() {
   // פתיחת פופאפ הצעות (קליק שמאלי) + עצירה אוטומטית
   async function handleWordClick(e, index) {
     e.preventDefault();
-    setActiveIndex(index);   // <<< סימון המילה הנבחרת
     audioRef.current?.pause();
     ttsRef.current?.pause();
 
@@ -262,7 +258,6 @@ export default function Home() {
 
   function closePopup(requestedResume = false) {
     setPopup((p) => ({ ...p, visible: false }));
-    setActiveIndex(null); // <<< ביטול הסימון כשסוגרים
     if (requestedResume && !isReplacing) {
       audioRef.current?.play();
     }
@@ -318,16 +313,15 @@ export default function Home() {
             onClick={(e) => handleWordClick(e, i)}
             onContextMenu={(e) => handleWordRightClick(e, i)}
             style={{
-              background:
-                i === currentIndex
-                  ? "yellow"
-                  : i === activeIndex
-                  ? "#d0ebff"
-                  : "transparent",
+              background: i === currentIndex ? "yellow" : "transparent",
               marginRight: 4,
               borderRadius: 4,
               cursor: "pointer",
-              color: highlighted.has(i) ? "blue" : "inherit",
+              color: highlighted.has(i)
+                ? "blue"
+                : i === popup.index
+                ? "red"
+                : "inherit",
             }}
           >
             {w.text}
