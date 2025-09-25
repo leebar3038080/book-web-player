@@ -1,73 +1,47 @@
+import OpenAI from "openai";
+
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST") return res.status(405).end();
+
+  const { word, context } = req.body || {};
+  if (!word || !context) {
+    return res.status(400).json({ error: "Missing word or context" });
   }
 
   try {
-    const { word, context } = req.body;
-
     const prompt = `
-You are a helpful text editor assistant.
-Suggest 3–5 alternative words or short phrases that would fit naturally in this context.
-One of them should be clearly marked as the most recommended choice.
-
-Current word: "${word}"
-Context:
----
-${context}
----
-
-Format your answer as:
-word
-word
-word (recommended)
-word
+    Suggest up to 5 alternative English words for the word "${word}" in this context:
+    ---
+    ${context}
+    ---
+    Return ONLY a JSON object with an array called "suggestions".
+    Example:
+    { "suggestions": ["word1", "word2", "word3"] }
     `;
 
-    const resp = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        input: prompt,
-      }),
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
     });
 
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      console.error("API error:", data);
-      return res.status(500).json({ error: "API request failed" });
+    let raw = completion.choices[0]?.message?.content || "{}";
+    let out;
+    try {
+      out = JSON.parse(raw);
+    } catch {
+      out = { suggestions: [] };
     }
 
-    // חילוץ הטקסט
-    let text = "";
-    if (data.output_text) {
-      text = data.output_text;
-    } else if (
-      data.output &&
-      Array.isArray(data.output) &&
-      data.output[0]?.content?.[0]?.text
-    ) {
-      text = data.output[0].content[0].text;
+    if (!out || !Array.isArray(out.suggestions)) {
+      out = { suggestions: [] };
     }
 
-    // פירוק לשורות + סימון ההמלצה
-    const suggestions = text
-      .split("\n")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .map((line) => ({
-        word: line.replace(/\(recommended\)/i, "").trim(),
-        isRecommended: /\(recommended\)/i.test(line),
-      }));
-
-    return res.status(200).json({ suggestions });
+    res.status(200).json(out);
   } catch (err) {
-    console.error("Server error:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("Suggest API error:", err);
+    res.status(500).json({ error: "Failed to get suggestions" });
   }
 }
