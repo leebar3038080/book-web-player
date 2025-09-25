@@ -5,52 +5,43 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  try {
-    const { word, context } = req.body || {};
-    if (!word || !context) {
-      return res.status(200).json({ suggestions: [] });
-    }
+  const { word, context } = req.body || {};
+  if (!word || !context) {
+    return res.status(400).json({ error: "Missing word or context" });
+  }
 
+  try {
     const prompt = `
-Suggest up to 5 single-word ENGLISH synonyms or replacements for the word "${word}" 
-that fit in the following literary context:
----
-${context}
----
-Output ONLY valid JSON: {"suggestions":["...","..."]} without explanations.
-`;
+    Suggest up to 5 alternative English words for the word "${word}" in this context:
+    ---
+    ${context}
+    ---
+    Return ONLY a JSON object with an array called "suggestions".
+    Example:
+    { "suggestions": ["word1", "word2", "word3"] }
+    `;
 
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.4,
       messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
     });
 
-    let text = completion.choices?.[0]?.message?.content?.trim() || "";
-
-    if (text.startsWith("```")) {
-      text = text.replace(/^```json\s*|\s*```$/g, "").trim();
-      text = text.replace(/^```\s*|\s*```$/g, "").trim();
-    }
-
-    let out = null;
+    let raw = completion.choices[0]?.message?.content || "{}";
+    let out;
     try {
-      out = JSON.parse(text);
-    } catch (e) {
-      out = null;
+      out = JSON.parse(raw);
+    } catch {
+      out = { suggestions: [] };
     }
 
     if (!out || !Array.isArray(out.suggestions)) {
       out = { suggestions: [] };
     }
 
-    out.suggestions = out.suggestions
-      .map((s) => String(s).trim())
-      .filter(Boolean);
-
-    return res.status(200).json(out);
+    res.status(200).json(out);
   } catch (err) {
-    console.error("suggest error:", err);
-    return res.status(200).json({ suggestions: [] });
+    console.error("Suggest API error:", err);
+    res.status(500).json({ error: "Failed to get suggestions" });
   }
 }
