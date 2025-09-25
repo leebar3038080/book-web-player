@@ -265,7 +265,7 @@ export default function Home() {
     }
   }
 
-  // מיזוג הצעות: הוספת הצעות חדשות ללא כפילויות (case-insensitive)
+  // מיזוג הצעות
   function mergeSuggestions(oldArr, newWords) {
     const seen = new Set(oldArr.map(o => o.word.toLowerCase()));
     const extras = [];
@@ -277,10 +277,10 @@ export default function Home() {
       seen.add(key);
       extras.push({ word: lw, isRecommended: true, fromChat: true });
     }
-    return [...extras, ...oldArr]; // מציג קודם את אלו מהצ'אט
+    return [...extras, ...oldArr];
   }
 
-  // שליחת צ'אט: הופך את התשובה להצעות לחיצות בפופאפ
+  // שליחת צ'אט
   async function handleChatSend() {
     if (!chatInput.trim() || popup.index == null) return;
     setChatLoading(true);
@@ -345,7 +345,12 @@ export default function Home() {
             onClick={(e) => handleWordClick(e, i)}
             onContextMenu={(e) => handleWordRightClick(e, i)}
             style={{
-              background: i === currentIndex ? "yellow" : "transparent",
+              background:
+                i === currentIndex
+                  ? "yellow"
+                  : i === popup.index
+                  ? "lightblue"
+                  : "transparent",
               marginRight: 4,
               borderRadius: 4,
               cursor: "pointer",
