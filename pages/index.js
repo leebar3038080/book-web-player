@@ -237,7 +237,7 @@ export default function Home() {
   }
 
   function closePopup(requestedResume = false) {
-    setPopup((p) => ({ ...p, visible: false }));
+    setPopup((p) => ({ ...p, visible: false, index: null })); // איפוס index כדי להסיר סימון כחול
     if (requestedResume && !isReplacing) audioRef.current?.play();
   }
 
@@ -345,12 +345,7 @@ export default function Home() {
             onClick={(e) => handleWordClick(e, i)}
             onContextMenu={(e) => handleWordRightClick(e, i)}
             style={{
-              background:
-                i === currentIndex
-                  ? "yellow"
-                  : i === popup.index
-                  ? "lightblue"
-                  : "transparent",
+              background: i === currentIndex ? "yellow" : "transparent",
               marginRight: 4,
               borderRadius: 4,
               cursor: "pointer",
