@@ -1,68 +1,59 @@
-/* עיצוב בסיסי לכל הדף */
+/* עיצוב כללי */
 body {
   margin: 0;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #f9fafb;
-  color: #111827;
+  background-color: #f7f9fc;
+  color: #333;
   line-height: 1.6;
 }
 
-/* כותרת */
-h1, h2, h3 {
-  font-weight: 600;
-  color: #1f2937;
-}
-
-/* קונטיינר מרכזי */
-.container {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-
-/* תיבת הטקסט */
-.text-box {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  margin-bottom: 1.5rem;
-}
-
-/* מילים שנבחרו */
-.highlight {
-  background-color: #dbeafe; /* כחול בהיר */
-  color: #1e3a8a; /* כחול כהה */
-  border-radius: 4px;
-  padding: 2px 4px;
+/* כותרת ראשית */
+h1 {
+  text-align: center;
+  font-size: 2rem;
+  margin-top: 20px;
+  color: #1e3a8a;
 }
 
 /* כפתורים */
 button {
-  background-color: #2563eb;
+  background: #2563eb;
   color: white;
   border: none;
+  padding: 10px 18px;
+  margin: 5px;
   border-radius: 8px;
-  padding: 0.6rem 1.2rem;
-  font-size: 0.95rem;
+  font-size: 1rem;
   cursor: pointer;
   transition: background 0.2s ease;
 }
 
 button:hover {
-  background-color: #1d4ed8;
+  background: #1d4ed8;
 }
 
-/* כפתורי עכבר ימין ושמאל */
-.button-group {
+button:disabled {
+  background: #93c5fd;
+  cursor: not-allowed;
+}
+
+/* אזור שליטה (נגן) */
+.controls {
   display: flex;
-  gap: 0.8rem;
-  margin-top: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 20px auto;
 }
 
-/* נגן אודיו */
-audio {
-  width: 100%;
-  margin-top: 1rem;
-  border-radius: 8px;
+/* טקסט הספר */
+.text-content {
+  max-width: 800px;
+  margin: 20px auto;
+  padding: 20px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  font-size: 1.1rem;
+  white-space: pre-line;
+  line-height: 1.8;
 }
