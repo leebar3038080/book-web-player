@@ -5,10 +5,10 @@ export default function Home() {
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [speed, setSpeed] = useState(1.0);
 
-  const audioRef = useRef(null); // MP3 ראשי
-  const ttsRef = useRef(null);   // נגן TTS זמני למשפט
+  const audioRef = useRef(null); 
+  const ttsRef = useRef(null);   
   const wordRefs = useRef([]);
-  const ttsUrlRef = useRef(null); // לשחרור URL קודם
+  const ttsUrlRef = useRef(null); 
 
   const [popup, setPopup] = useState({
     visible: false,
@@ -20,14 +20,14 @@ export default function Home() {
     error: null,
   });
 
-  // אינדקסים של מילים שהוחלפו (לצבוע בכחול)
   const [highlighted, setHighlighted] = useState(new Set());
-
-  // דגל שמונע חפיפה בין TTS למשפט ל-MP3
   const [isReplacing, setIsReplacing] = useState(false);
 
-  // תרגום
-  const [translations, setTranslations] = useState({}); // { "word": "תרגום" }
+  // תרגומים
+  const [translations, setTranslations] = useState({});
+  // צ'אט חופשי
+  const [chatInput, setChatInput] = useState("");
+  const [chatResponse, setChatResponse] = useState("");
 
   useEffect(() => {
     fetch("/chapter_one_shimmer.json")
@@ -48,7 +48,6 @@ export default function Home() {
       });
   }, []);
 
-  // סנכרון ההדגשה הצהובה עם זמן ה-MP3 הראשי
   useEffect(() => {
     if (!audioRef.current) return;
     const interval = setInterval(() => {
@@ -61,7 +60,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [words, isReplacing]);
 
-  // שליטה בסיסית
   const handlePlay = () => {
     if (isReplacing) return;
     audioRef.current?.play();
@@ -90,7 +88,6 @@ export default function Home() {
     if (ttsRef.current) ttsRef.current.playbackRate = newSpeed;
   };
 
-  // חלון הקשר להצעות
   function getContext(index) {
     const spanBack = 40;
     const spanForward = 20;
@@ -99,7 +96,6 @@ export default function Home() {
     return words.slice(start, end).map((w) => w.text).join(" ");
   }
 
-  // פתיחת פופאפ הצעות (קליק שמאלי) + עצירה אוטומטית
   async function handleWordClick(e, index) {
     e.preventDefault();
     audioRef.current?.pause();
@@ -151,11 +147,9 @@ export default function Home() {
     }
   }
 
-  // חישוב גבולות משפט סביב אינדקס (מחפש . ! ?)
   function getSentenceRange(index) {
     let s = index;
     let e = index;
-
     while (s > 0) {
       const prev = words[s - 1]?.text || "";
       if (/[.!?]$/.test(prev)) break;
@@ -176,7 +170,6 @@ export default function Home() {
     }
   }
 
-  // החלפת מילה / חזרה למקור + השמעת משפט שלם ב-TTS
   async function applySuggestion(chosen) {
     if (popup.index == null) return;
     const idx = popup.index;
@@ -278,19 +271,37 @@ export default function Home() {
     audioRef.current.play();
   }
 
-  // תרגום מילה
   async function handleTranslate(word) {
     try {
       const resp = await fetch("/api/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word, targetLang: "he" }), // דוגמה: תרגום לעברית
+        body: JSON.stringify({ word, targetLang: "he" }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Translate failed");
       setTranslations((prev) => ({ ...prev, [word]: data.translation }));
     } catch (err) {
       setTranslations((prev) => ({ ...prev, [word]: "❌ שגיאת תרגום" }));
+    }
+  }
+
+  async function handleChatSend() {
+    if (!chatInput.trim() || popup.index == null) return;
+    const idx = popup.index;
+    const context = getContext(idx);
+
+    try {
+      const resp = await fetch("/api/chat-suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: chatInput, context }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.error || "Chat failed");
+      setChatResponse(data.reply || "אין תשובה");
+    } catch (err) {
+      setChatResponse("❌ שגיאת צ'אט");
     }
   }
 
@@ -433,6 +444,39 @@ export default function Home() {
               )}
             </>
           )}
+
+          <div style={{ marginTop: 10 }}>
+            <textarea
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="שאל שאלה או בקשה חופשית..."
+              style={{
+                width: "100%",
+                minHeight: "40px",
+                border: "1px solid #ccc",
+                borderRadius: 6,
+                padding: "4px",
+              }}
+            />
+            <button
+              onClick={handleChatSend}
+              style={{
+                marginTop: 4,
+                padding: "4px 8px",
+                borderRadius: 6,
+                border: "1px solid #ddd",
+                background: "#f0f0f0",
+                cursor: "pointer",
+              }}
+            >
+              שלח
+            </button>
+            {chatResponse && (
+              <div style={{ marginTop: 6, fontSize: "14px" }}>
+                תשובה: {chatResponse}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
