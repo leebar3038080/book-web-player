@@ -5,10 +5,10 @@ export default function Home() {
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [speed, setSpeed] = useState(1.0);
 
-  const audioRef = useRef(null); 
-  const ttsRef = useRef(null);   
+  const audioRef = useRef(null); // MP3 ראשי
+  const ttsRef = useRef(null);   // נגן TTS זמני למשפט
   const wordRefs = useRef([]);
-  const ttsUrlRef = useRef(null); 
+  const ttsUrlRef = useRef(null); // לשחרור URL קודם
 
   const [popup, setPopup] = useState({
     visible: false,
@@ -23,11 +23,13 @@ export default function Home() {
   const [highlighted, setHighlighted] = useState(new Set());
   const [isReplacing, setIsReplacing] = useState(false);
 
-  // תרגומים
-  const [translations, setTranslations] = useState({});
+  // תרגומים להצעות
+  const [translations, setTranslations] = useState({}); // { "word": "תרגום" }
+
   // צ'אט חופשי
   const [chatInput, setChatInput] = useState("");
-  const [chatResponse, setChatResponse] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState(null);
 
   useEffect(() => {
     fetch("/chapter_one_shimmer.json")
@@ -48,6 +50,7 @@ export default function Home() {
       });
   }, []);
 
+  // סנכרון ההדגשה הצהובה עם זמן ה-MP3 הראשי
   useEffect(() => {
     if (!audioRef.current) return;
     const interval = setInterval(() => {
@@ -60,14 +63,9 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [words, isReplacing]);
 
-  const handlePlay = () => {
-    if (isReplacing) return;
-    audioRef.current?.play();
-  };
-  const handlePause = () => {
-    audioRef.current?.pause();
-    ttsRef.current?.pause();
-  };
+  // שליטה בסיסית
+  const handlePlay = () => { if (!isReplacing) audioRef.current?.play(); };
+  const handlePause = () => { audioRef.current?.pause(); ttsRef.current?.pause(); };
   const handleStop = () => {
     audioRef.current?.pause();
     audioRef.current.currentTime = 0;
@@ -88,6 +86,7 @@ export default function Home() {
     if (ttsRef.current) ttsRef.current.playbackRate = newSpeed;
   };
 
+  // הקשר (40 מילים אחורה, 20 קדימה)
   function getContext(index) {
     const spanBack = 40;
     const spanForward = 20;
@@ -96,6 +95,7 @@ export default function Home() {
     return words.slice(start, end).map((w) => w.text).join(" ");
   }
 
+  // פתיחת פופאפ הצעות (קליק שמאלי)
   async function handleWordClick(e, index) {
     e.preventDefault();
     audioRef.current?.pause();
@@ -128,28 +128,22 @@ export default function Home() {
       if (!resp.ok) throw new Error(data?.error || "Request failed");
 
       const originalWord = words[index].original;
-      const suggestions = data?.suggestions || [];
+      const suggestions = (data?.suggestions || []).map(w => ({ word: w }));
       if (target !== originalWord) {
         suggestions.unshift({ word: originalWord, isOriginal: true });
       }
 
-      setPopup((p) => ({
-        ...p,
-        loading: false,
-        suggestions,
-      }));
+      setPopup((p) => ({ ...p, loading: false, suggestions }));
+      setChatInput("");
+      setChatError(null);
     } catch (err) {
-      setPopup((p) => ({
-        ...p,
-        loading: false,
-        error: err?.message || "Unknown error",
-      }));
+      setPopup((p) => ({ ...p, loading: false, error: err?.message || "Unknown error" }));
     }
   }
 
+  // חישוב גבולות משפט
   function getSentenceRange(index) {
-    let s = index;
-    let e = index;
+    let s = index, e = index;
     while (s > 0) {
       const prev = words[s - 1]?.text || "";
       if (/[.!?]$/.test(prev)) break;
@@ -170,6 +164,7 @@ export default function Home() {
     }
   }
 
+  // החלפה / חזרה למקור + TTS של המשפט
   async function applySuggestion(chosen) {
     if (popup.index == null) return;
     const idx = popup.index;
@@ -179,11 +174,7 @@ export default function Home() {
     if (isReturnToOriginal) {
       next[idx] = { ...next[idx], text: words[idx].original };
       setWords(next);
-      setHighlighted((prev) => {
-        const copy = new Set(prev);
-        copy.delete(idx);
-        return copy;
-      });
+      setHighlighted((prev) => { const copy = new Set(prev); copy.delete(idx); return copy; });
       closePopup(false);
       if (audioRef.current) {
         audioRef.current.currentTime = Math.max(0, words[idx].start - 0.5);
@@ -193,11 +184,7 @@ export default function Home() {
     } else {
       next[idx] = { ...next[idx], text: chosen };
       setWords(next);
-      setHighlighted((prev) => {
-        const copy = new Set(prev);
-        copy.add(idx);
-        return copy;
-      });
+      setHighlighted((prev) => { const copy = new Set(prev); copy.add(idx); return copy; });
     }
 
     const [s, e] = getSentenceRange(idx);
@@ -228,10 +215,7 @@ export default function Home() {
         ttsRef.current.playbackRate = speed;
         audioRef.current.playbackRate = speed;
 
-        ttsRef.current.onplay = () => {
-          audioRef.current?.pause();
-        };
-
+        ttsRef.current.onplay = () => { audioRef.current?.pause(); };
         ttsRef.current.onended = () => {
           setIsReplacing(false);
           if (audioRef.current) {
@@ -254,29 +238,24 @@ export default function Home() {
 
   function closePopup(requestedResume = false) {
     setPopup((p) => ({ ...p, visible: false }));
-    if (requestedResume && !isReplacing) {
-      audioRef.current?.play();
-    }
+    if (requestedResume && !isReplacing) audioRef.current?.play();
   }
 
   function handleWordRightClick(e, index) {
     e.preventDefault();
-    if (ttsRef.current) {
-      ttsRef.current.pause();
-      revokePrevTtsUrl();
-      setIsReplacing(false);
-    }
+    if (ttsRef.current) { ttsRef.current.pause(); revokePrevTtsUrl(); setIsReplacing(false); }
     if (!audioRef.current) return;
     audioRef.current.currentTime = words[index].start;
     audioRef.current.play();
   }
 
+  // תרגום מילה
   async function handleTranslate(word) {
     try {
       const resp = await fetch("/api/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word, targetLang: "he" }),
+        body: JSON.stringify({ word }), // translate.js מחזיר תמיד לעברית
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Translate failed");
@@ -286,22 +265,45 @@ export default function Home() {
     }
   }
 
+  // מיזוג הצעות: הוספת הצעות חדשות ללא כפילויות (case-insensitive)
+  function mergeSuggestions(oldArr, newWords) {
+    const seen = new Set(oldArr.map(o => o.word.toLowerCase()));
+    const extras = [];
+    for (const w of newWords) {
+      const lw = String(w).trim();
+      if (!lw) continue;
+      const key = lw.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      extras.push({ word: lw, isRecommended: true, fromChat: true });
+    }
+    return [...extras, ...oldArr]; // מציג קודם את אלו מהצ'אט
+  }
+
+  // שליחת צ'אט: הופך את התשובה להצעות לחיצות בפופאפ
   async function handleChatSend() {
     if (!chatInput.trim() || popup.index == null) return;
+    setChatLoading(true);
+    setChatError(null);
     const idx = popup.index;
+    const word = words[idx]?.text || "";
     const context = getContext(idx);
 
     try {
       const resp = await fetch("/api/chat-suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: chatInput, context }),
+        body: JSON.stringify({ word, context, prompt: chatInput }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Chat failed");
-      setChatResponse(data.reply || "אין תשובה");
+
+      const arr = Array.isArray(data?.suggestions) ? data.suggestions : [];
+      setPopup(p => ({ ...p, suggestions: mergeSuggestions(p.suggestions, arr) }));
+      setChatLoading(false);
     } catch (err) {
-      setChatResponse("❌ שגיאת צ'אט");
+      setChatLoading(false);
+      setChatError("❌ שגיאת צ'אט");
     }
   }
 
@@ -361,7 +363,7 @@ export default function Home() {
             position: "absolute",
             left: popup.x,
             top: popup.y,
-            minWidth: 260,
+            minWidth: 320,
             background: "white",
             border: "1px solid #ddd",
             borderRadius: 8,
@@ -370,30 +372,13 @@ export default function Home() {
             zIndex: 9999,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: 6,
-            }}
-          >
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
             <strong>הצעות</strong>
-            <button
-              onClick={() => closePopup(true)}
-              style={{
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-            >
-              ✕
-            </button>
+            <button onClick={() => closePopup(true)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✕</button>
           </div>
 
           {popup.loading && <div>טוען...</div>}
-          {popup.error && (
-            <div style={{ color: "crimson" }}>שגיאה: {popup.error}</div>
-          )}
+          {popup.error && <div style={{ color: "crimson" }}>שגיאה: {popup.error}</div>}
 
           {!popup.loading && !popup.error && (
             <>
@@ -415,8 +400,7 @@ export default function Home() {
                           fontWeight: s.isRecommended ? "bold" : "normal",
                         }}
                       >
-                        {s.word} {s.isRecommended ? "⭐" : ""}
-                        {s.isOriginal ? " (מקורי)" : ""}
+                        {s.word} {s.isRecommended ? "⭐" : ""}{s.isOriginal ? " (מקורי)" : ""}
                       </button>
                       <button
                         onClick={() => handleTranslate(s.word)}
@@ -442,41 +426,25 @@ export default function Home() {
                   ))}
                 </div>
               )}
+
+              <div style={{ marginTop: 10 }}>
+                <textarea
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="כתוב בקשה חופשית (למשל: מילה שמתאימה לסצנה של ניצחון)..."
+                  style={{ width: "100%", minHeight: 48, border: "1px solid #ccc", borderRadius: 6, padding: 6 }}
+                />
+                <button
+                  onClick={handleChatSend}
+                  disabled={chatLoading}
+                  style={{ marginTop: 4, padding: "4px 8px", borderRadius: 6, border: "1px solid #ddd", background: "#f0f0f0", cursor: "pointer" }}
+                >
+                  {chatLoading ? "שולח..." : "שלח"}
+                </button>
+                {chatError && <div style={{ marginTop: 6, fontSize: 14, color: "crimson" }}>{chatError}</div>}
+              </div>
             </>
           )}
-
-          <div style={{ marginTop: 10 }}>
-            <textarea
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="שאל שאלה או בקשה חופשית..."
-              style={{
-                width: "100%",
-                minHeight: "40px",
-                border: "1px solid #ccc",
-                borderRadius: 6,
-                padding: "4px",
-              }}
-            />
-            <button
-              onClick={handleChatSend}
-              style={{
-                marginTop: 4,
-                padding: "4px 8px",
-                borderRadius: 6,
-                border: "1px solid #ddd",
-                background: "#f0f0f0",
-                cursor: "pointer",
-              }}
-            >
-              שלח
-            </button>
-            {chatResponse && (
-              <div style={{ marginTop: 6, fontSize: "14px" }}>
-                תשובה: {chatResponse}
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>
