@@ -1,0 +1,68 @@
+/* עיצוב בסיסי לכל הדף */
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f9fafb;
+  color: #111827;
+  line-height: 1.6;
+}
+
+/* כותרת */
+h1, h2, h3 {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* קונטיינר מרכזי */
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* תיבת הטקסט */
+.text-box {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  margin-bottom: 1.5rem;
+}
+
+/* מילים שנבחרו */
+.highlight {
+  background-color: #dbeafe; /* כחול בהיר */
+  color: #1e3a8a; /* כחול כהה */
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+/* כפתורים */
+button {
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+button:hover {
+  background-color: #1d4ed8;
+}
+
+/* כפתורי עכבר ימין ושמאל */
+.button-group {
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+/* נגן אודיו */
+audio {
+  width: 100%;
+  margin-top: 1rem;
+  border-radius: 8px;
+}
