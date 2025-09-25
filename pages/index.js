@@ -26,6 +26,9 @@ export default function Home() {
   // דגל שמונע חפיפה בין TTS למשפט ל-MP3
   const [isReplacing, setIsReplacing] = useState(false);
 
+  // תרגום
+  const [translations, setTranslations] = useState({}); // { "word": "תרגום" }
+
   useEffect(() => {
     fetch("/chapter_one_shimmer.json")
       .then((res) => res.json())
@@ -275,6 +278,22 @@ export default function Home() {
     audioRef.current.play();
   }
 
+  // תרגום מילה
+  async function handleTranslate(word) {
+    try {
+      const resp = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word, targetLang: "he" }), // דוגמה: תרגום לעברית
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.error || "Translate failed");
+      setTranslations((prev) => ({ ...prev, [word]: data.translation }));
+    } catch (err) {
+      setTranslations((prev) => ({ ...prev, [word]: "❌ שגיאת תרגום" }));
+    }
+  }
+
   return (
     <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
       <h1>WhisperX Web Player</h1>
@@ -372,22 +391,43 @@ export default function Home() {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {popup.suggestions.map((s, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => applySuggestion(s.word)}
-                      style={{
-                        textAlign: "left",
-                        padding: "6px 8px",
-                        borderRadius: 6,
-                        border: "1px solid #ddd",
-                        background: "#f8f8f8",
-                        cursor: "pointer",
-                        fontWeight: s.isRecommended ? "bold" : "normal",
-                      }}
-                    >
-                      {s.word} {s.isRecommended ? "⭐" : ""}
-                      {s.isOriginal ? " (מקורי)" : ""}
-                    </button>
+                    <div key={idx} style={{ display: "flex", flexDirection: "column" }}>
+                      <button
+                        onClick={() => applySuggestion(s.word)}
+                        style={{
+                          textAlign: "left",
+                          padding: "6px 8px",
+                          borderRadius: 6,
+                          border: "1px solid #ddd",
+                          background: "#f8f8f8",
+                          cursor: "pointer",
+                          fontWeight: s.isRecommended ? "bold" : "normal",
+                        }}
+                      >
+                        {s.word} {s.isRecommended ? "⭐" : ""}
+                        {s.isOriginal ? " (מקורי)" : ""}
+                      </button>
+                      <button
+                        onClick={() => handleTranslate(s.word)}
+                        style={{
+                          textAlign: "left",
+                          padding: "4px 6px",
+                          borderRadius: 6,
+                          border: "1px solid #eee",
+                          background: "#fafafa",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                          marginTop: 2,
+                        }}
+                      >
+                        🌐 תרגם
+                      </button>
+                      {translations[s.word] && (
+                        <div style={{ fontSize: "14px", marginTop: 2, color: "#333" }}>
+                          ➜ {translations[s.word]}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
