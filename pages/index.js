@@ -345,7 +345,12 @@ export default function Home() {
             onClick={(e) => handleWordClick(e, i)}
             onContextMenu={(e) => handleWordRightClick(e, i)}
             style={{
-              background: i === currentIndex ? "yellow" : "transparent",
+              background:
+                i === currentIndex
+                  ? "yellow"
+                  : i === popup.index
+                  ? "lightblue"
+                  : "transparent",
               marginRight: 4,
               borderRadius: 4,
               cursor: "pointer",
