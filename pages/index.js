@@ -293,7 +293,7 @@ export default function Home() {
       const resp = await fetch("/api/chat-suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word, context, prompt: chatInput }),
+        body: JSON.stringify({ word, context, message: chatInput }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Chat failed");
