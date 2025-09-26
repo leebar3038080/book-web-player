@@ -52,6 +52,7 @@ export default function Home() {
         });
         setWords(flat);
         setCurrentIndex(-1);
+        setHighlighted(new Set()); // ✅ איפוס סימונים בכחול בכל טעינת פרק חדש
       });
 
     if (audioRef.current) {
@@ -247,7 +248,7 @@ export default function Home() {
   }
 
   function closePopup(requestedResume = false) {
-    setPopup((p) => ({ ...p, visible: false, index: null })); // איפוס index כדי להסיר סימון כחול
+    setPopup((p) => ({ ...p, visible: false, index: null }));
     if (requestedResume && !isReplacing) audioRef.current?.play();
   }
 
@@ -265,7 +266,7 @@ export default function Home() {
       const resp = await fetch("/api/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word }), // translate.js מחזיר תמיד לעברית
+        body: JSON.stringify({ word }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Translate failed");
