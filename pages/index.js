@@ -320,7 +320,7 @@ export default function Home() {
 
   return (
     <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
-      <h1>WhisperX Web Player</h1>
+      <h1>הנערה מהבית הוורד</h1>
 
       {/* ✅ בחירת פרק */}
       <div style={{ marginBottom: 20 }}>
