@@ -87,38 +87,14 @@ export default function Home() {
   const handleSlower = () => {
     const newSpeed = Math.max(0.5, speed - 0.1);
     setSpeed(newSpeed);
-
-    if (audioRef.current) {
-      audioRef.current.playbackRate = newSpeed;
-      audioRef.current.preservesPitch = true;
-      audioRef.current.mozPreservesPitch = true;
-      audioRef.current.webkitPreservesPitch = true;
-    }
-
-    if (ttsRef.current) {
-      ttsRef.current.playbackRate = newSpeed;
-      ttsRef.current.preservesPitch = true;
-      ttsRef.current.mozPreservesPitch = true;
-      ttsRef.current.webkitPreservesPitch = true;
-    }
+    if (audioRef.current) audioRef.current.playbackRate = newSpeed;
+    if (ttsRef.current) ttsRef.current.playbackRate = newSpeed;
   };
   const handleFaster = () => {
     const newSpeed = Math.min(1.5, speed + 0.1);
     setSpeed(newSpeed);
-
-    if (audioRef.current) {
-      audioRef.current.playbackRate = newSpeed;
-      audioRef.current.preservesPitch = true;
-      audioRef.current.mozPreservesPitch = true;
-      audioRef.current.webkitPreservesPitch = true;
-    }
-
-    if (ttsRef.current) {
-      ttsRef.current.playbackRate = newSpeed;
-      ttsRef.current.preservesPitch = true;
-      ttsRef.current.mozPreservesPitch = true;
-      ttsRef.current.webkitPreservesPitch = true;
-    }
+    if (audioRef.current) audioRef.current.playbackRate = newSpeed;
+    if (ttsRef.current) ttsRef.current.playbackRate = newSpeed;
   };
 
   // הקשר (40 מילים אחורה, 20 קדימה)
@@ -248,14 +224,7 @@ export default function Home() {
       if (ttsRef.current) {
         ttsRef.current.src = url;
         ttsRef.current.playbackRate = speed;
-        ttsRef.current.preservesPitch = true;
-        ttsRef.current.mozPreservesPitch = true;
-        ttsRef.current.webkitPreservesPitch = true;
-
         audioRef.current.playbackRate = speed;
-        audioRef.current.preservesPitch = true;
-        audioRef.current.mozPreservesPitch = true;
-        audioRef.current.webkitPreservesPitch = true;
 
         ttsRef.current.onplay = () => { audioRef.current?.pause(); };
         ttsRef.current.onended = () => {
@@ -351,7 +320,7 @@ export default function Home() {
 
   return (
     <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
-      <h1>הנערה מהבית הוורוד</h1>
+      <h1>הנערה מהבית הוורד</h1>
 
       {/* ✅ בחירת פרק */}
       <div style={{ marginBottom: 20 }}>
@@ -381,7 +350,8 @@ export default function Home() {
         <button onClick={handleFaster}>⏩ Faster</button>
         <span style={{ marginLeft: 10 }}>Speed: {speed.toFixed(1)}x</span>
       </div>
-<div
+
+      <div
         style={{
           border: "1px solid #ddd",
           padding: "16px",
