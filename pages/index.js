@@ -31,8 +31,12 @@ export default function Home() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState(null);
 
+  // ✅ מצב חדש – בחירת פרק
+  const [selectedChapter, setSelectedChapter] = useState("1");
+
+  // טוען JSON + MP3 לפי הפרק שנבחר
   useEffect(() => {
-    fetch("/chapter_one_shimmer.json")
+    fetch(`/books/${selectedChapter}.json`)
       .then((res) => res.json())
       .then((data) => {
         const flat = [];
@@ -47,8 +51,14 @@ export default function Home() {
           );
         });
         setWords(flat);
+        setCurrentIndex(-1);
       });
-  }, []);
+
+    if (audioRef.current) {
+      audioRef.current.src = `/books/${selectedChapter}.mp3`;
+      audioRef.current.load();
+    }
+  }, [selectedChapter]);
 
   // סנכרון ההדגשה הצהובה עם זמן ה-MP3 הראשי
   useEffect(() => {
@@ -311,8 +321,23 @@ export default function Home() {
     <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
       <h1>WhisperX Web Player</h1>
 
+      {/* ✅ בחירת פרק */}
+      <div style={{ marginBottom: 20 }}>
+        <label>בחר פרק: </label>
+        <select
+          value={selectedChapter}
+          onChange={(e) => setSelectedChapter(e.target.value)}
+        >
+          {Array.from({ length: 53 }, (_, i) => (
+            <option key={i + 1} value={i + 1}>
+              פרק {i + 1}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <audio ref={audioRef} hidden>
-        <source src="/chapter_one_shimmer.mp3" type="audio/mpeg" />
+        <source src={`/books/${selectedChapter}.mp3`} type="audio/mpeg" />
       </audio>
       <audio ref={ttsRef} hidden />
 
