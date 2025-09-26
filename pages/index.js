@@ -52,7 +52,39 @@ export default function Home() {
         });
         setWords(flat);
         setCurrentIndex(-1);
-        setHighlighted(new Set()); // ✅ איפוס סימונים בכחול בכל טעינת פרק חדש
+        setHighlighted(new Set());
+
+        // החלת שינויים שמורים מה־changes.json דרך ה־API
+        fetch(`/api/changes`)
+          .then((r) => r.json())
+          .then(({ changes }) => {
+            if (!Array.isArray(changes)) return;
+            const chapterChanges = changes.filter(
+              (c) => String(c.chapter) === String(selectedChapter)
+            );
+            if (!chapterChanges.length) return;
+
+            // שמירת השינוי האחרון לכל אינדקס
+            const latest = {};
+            for (const c of chapterChanges) latest[c.index] = c;
+
+            const changedSet = new Set();
+            const updated = flat.map((w, i) => {
+              const rec = latest[i];
+              if (rec && typeof rec.newWord === "string") {
+                const newText = rec.newWord;
+                if (newText !== w.original) {
+                  changedSet.add(i);
+                }
+                return { ...w, text: newText };
+              }
+              return w;
+            });
+
+            setWords(updated);
+            setHighlighted(changedSet);
+          })
+          .catch(() => {});
       });
 
     if (audioRef.current) {
@@ -186,6 +218,21 @@ export default function Home() {
       next[idx] = { ...next[idx], text: words[idx].original };
       setWords(next);
       setHighlighted((prev) => { const copy = new Set(prev); copy.delete(idx); return copy; });
+
+      // שמירת שינוי שמחזיר למקור
+      try {
+        await fetch("/api/changes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chapter: selectedChapter,
+            index: idx,
+            original: words[idx].original,
+            newWord: words[idx].original,
+          }),
+        });
+      } catch {}
+
       closePopup(false);
       if (audioRef.current) {
         audioRef.current.currentTime = Math.max(0, words[idx].start - 0.5);
@@ -196,6 +243,20 @@ export default function Home() {
       next[idx] = { ...next[idx], text: chosen };
       setWords(next);
       setHighlighted((prev) => { const copy = new Set(prev); copy.add(idx); return copy; });
+
+      // שמירת שינוי חדש
+      try {
+        await fetch("/api/changes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chapter: selectedChapter,
+            index: idx,
+            original: words[idx].original,
+            newWord: chosen,
+          }),
+        });
+      } catch {}
     }
 
     const [s, e] = getSentenceRange(idx);
@@ -238,8 +299,7 @@ export default function Home() {
 
         await ttsRef.current.play();
       }
-    } catch (err) {
-      console.error("TTS error:", err);
+    } catch {
       setIsReplacing(false);
       audioRef.current?.play();
     }
@@ -271,7 +331,7 @@ export default function Home() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Translate failed");
       setTranslations((prev) => ({ ...prev, [word]: data.translation }));
-    } catch (err) {
+    } catch {
       setTranslations((prev) => ({ ...prev, [word]: "❌ שגיאת תרגום" }));
     }
   }
@@ -312,7 +372,7 @@ export default function Home() {
       const arr = Array.isArray(data?.suggestions) ? data.suggestions : [];
       setPopup(p => ({ ...p, suggestions: mergeSuggestions(p.suggestions, arr) }));
       setChatLoading(false);
-    } catch (err) {
+    } catch {
       setChatLoading(false);
       setChatError("❌ שגיאת צ'אט");
     }
