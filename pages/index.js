@@ -34,84 +34,175 @@ export default function Home() {
   // ✅ מצב חדש – בחירת פרק
   const [selectedChapter, setSelectedChapter] = useState("1");
 
+  // שמירה מי המשפט האחרון שהוחלף כדי לא לטריגר שוב בתוך אותו משפט
+  const lastAutoReplaceRangeRef = useRef(null); // { s, e, chapter }
+  const pendingAutoReplaceRef = useRef(false);
+
   // טוען JSON + MP3 לפי הפרק שנבחר
   useEffect(() => {
-    fetch(`/books/${selectedChapter}.json`)
-      .then((res) => res.json())
-      .then((data) => {
-        const flat = [];
-        data.segments.forEach((seg) => {
-          seg.words.forEach((w) =>
-            flat.push({
-              text: w.word,
-              original: w.word,
-              start: w.start,
-              end: w.end,
-            })
-          );
-        });
-        setWords(flat);
-        setCurrentIndex(-1);
-        setHighlighted(new Set());
+    let cancelled = false;
 
-        // החלת שינויים שמורים מה־changes.json דרך ה־API
-        fetch(`/api/changes`)
-          .then((r) => r.json())
-          .then(({ changes }) => {
-            if (!Array.isArray(changes)) return;
-            const chapterChanges = changes.filter(
-              (c) => String(c.chapter) === String(selectedChapter)
-            );
-            if (!chapterChanges.length) return;
+    async function loadChapter() {
+      const res = await fetch(`/books/${selectedChapter}.json`);
+      const data = await res.json();
 
-            // שמירת השינוי האחרון לכל אינדקס
-            const latest = {};
-            for (const c of chapterChanges) latest[c.index] = c;
-
-            const changedSet = new Set();
-            const updated = flat.map((w, i) => {
-              const rec = latest[i];
-              if (rec && typeof rec.newWord === "string") {
-                const newText = rec.newWord;
-                if (newText !== w.original) {
-                  changedSet.add(i);
-                }
-                return { ...w, text: newText };
-              }
-              return w;
-            });
-
-            setWords(updated);
-            setHighlighted(changedSet);
+      // פריסה למילים שטוחות עם זמנים
+      const flat = [];
+      data.segments.forEach((seg) => {
+        seg.words.forEach((w) =>
+          flat.push({
+            text: w.word,
+            original: w.word,
+            start: w.start,
+            end: w.end,
+            changed: false, // דיפולט
           })
-          .catch(() => {});
+        );
       });
 
+      // אתחול בסיסי
+      if (cancelled) return;
+      setWords(flat);
+      setCurrentIndex(-1);
+      setHighlighted(new Set());
+      lastAutoReplaceRangeRef.current = null;
+      pendingAutoReplaceRef.current = false;
+
+      // טעינת שינויים קודמים
+      try {
+        const r = await fetch(`/api/changes`);
+        const json = await r.json();
+        if (!Array.isArray(json?.changes)) return;
+
+        const chapterChanges = json.changes.filter(
+          (c) => String(c.chapter) === String(selectedChapter)
+        );
+        if (!chapterChanges.length) return;
+
+        // שמירת השינוי האחרון לכל אינדקס
+        const latest = {};
+        for (const c of chapterChanges) latest[c.index] = c;
+
+        const changedSet = new Set();
+        const updated = flat.map((w, i) => {
+          const rec = latest[i];
+          if (rec && typeof rec.newWord === "string") {
+            const newText = rec.newWord;
+            if (newText !== w.original) {
+              changedSet.add(i);
+              return { ...w, text: newText, changed: true };
+            }
+            return { ...w, text: w.original, changed: false };
+          }
+          return w;
+        });
+
+        if (cancelled) return;
+        setWords(updated);
+        setHighlighted(changedSet);
+      } catch {
+        // אין שינוי
+      }
+    }
+
+    loadChapter();
+
+    // הגדרת ה־MP3
     if (audioRef.current) {
       audioRef.current.src = `/books/${selectedChapter}.mp3`;
       audioRef.current.load();
+      audioRef.current.playbackRate = speed;
     }
+    if (ttsRef.current) {
+      ttsRef.current.playbackRate = speed;
+    }
+
+    return () => {
+      cancelled = true;
+      // ניקוי TTS תלוי פרק
+      if (ttsRef.current) {
+        try {
+          ttsRef.current.pause();
+        } catch {}
+      }
+      if (audioRef.current) {
+        try {
+          audioRef.current.pause();
+        } catch {}
+      }
+      revokePrevTtsUrl();
+      setIsReplacing(false);
+      lastAutoReplaceRangeRef.current = null;
+      pendingAutoReplaceRef.current = false;
+    };
   }, [selectedChapter]);
 
-  // סנכרון ההדגשה הצהובה עם זמן ה-MP3 הראשי
+  // סנכרון ההדגשה הצהובה עם זמן ה-MP3 הראשי + יירוט אוטומטי של משפט אם קיימת מילה שהשתנתה
   useEffect(() => {
     if (!audioRef.current) return;
     const interval = setInterval(() => {
       const audio = audioRef.current;
-      if (!audio || !words.length || isReplacing) return;
-      const t = audio.currentTime;
-      const idx = words.findIndex((w) => t >= w.start && t < w.end);
-      if (idx !== -1) setCurrentIndex(idx);
+      if (!audio || !words.length) return;
+
+      // בזמן החלפה לא לעדכן אינדקס מה־MP3
+      if (!isReplacing) {
+        const t = audio.currentTime;
+        const idx = words.findIndex((w) => t >= w.start && t < w.end);
+        if (idx !== -1) {
+          setCurrentIndex(idx);
+
+          // בדיקת יירוט אם המילה שונתה
+          const changedHere =
+            highlighted.has(idx) || words[idx]?.changed === true;
+
+          if (
+            changedHere &&
+            !pendingAutoReplaceRef.current && // לא בתהליך יצירה
+            !isReplacing
+          ) {
+            const [s, e] = getSentenceRange(idx);
+            const last = lastAutoReplaceRangeRef.current;
+            // להימנע מפעמיים באותו משפט ברצף
+            const sameSentence =
+              last &&
+              last.chapter === String(selectedChapter) &&
+              last.s === s &&
+              last.e === e;
+
+            if (!sameSentence) {
+              pendingAutoReplaceRef.current = true;
+              // להריץ החלפת משפט
+              replaceSentenceAtIndex(idx)
+                .catch(() => {
+                  // כשל ב־TTS -> ממשיכים MP3
+                })
+                .finally(() => {
+                  pendingAutoReplaceRef.current = false;
+                  lastAutoReplaceRangeRef.current = {
+                    s,
+                    e,
+                    chapter: String(selectedChapter),
+                  };
+                });
+            }
+          }
+        }
+      }
     }, 80);
     return () => clearInterval(interval);
-  }, [words, isReplacing]);
+  }, [words, highlighted, isReplacing, selectedChapter]);
 
   // שליטה בסיסית
-  const handlePlay = () => { if (!isReplacing) audioRef.current?.play(); };
-  const handlePause = () => { audioRef.current?.pause(); ttsRef.current?.pause(); };
+  const handlePlay = () => {
+    if (!isReplacing) audioRef.current?.play();
+  };
+  const handlePause = () => {
+    audioRef.current?.pause();
+    ttsRef.current?.pause();
+  };
   const handleStop = () => {
     audioRef.current?.pause();
-    audioRef.current.currentTime = 0;
+    if (audioRef.current) audioRef.current.currentTime = 0;
     setCurrentIndex(-1);
     ttsRef.current?.pause();
     setIsReplacing(false);
@@ -171,7 +262,7 @@ export default function Home() {
       if (!resp.ok) throw new Error(data?.error || "Request failed");
 
       const originalWord = words[index].original;
-      const suggestions = (data?.suggestions || []).map(w => ({ word: w }));
+      const suggestions = (data?.suggestions || []).map((w) => ({ word: w }));
       if (target !== originalWord) {
         suggestions.unshift({ word: originalWord, isOriginal: true });
       }
@@ -180,13 +271,18 @@ export default function Home() {
       setChatInput("");
       setChatError(null);
     } catch (err) {
-      setPopup((p) => ({ ...p, loading: false, error: err?.message || "Unknown error" }));
+      setPopup((p) => ({
+        ...p,
+        loading: false,
+        error: err?.message || "Unknown error",
+      }));
     }
   }
 
   // חישוב גבולות משפט
   function getSentenceRange(index) {
-    let s = index, e = index;
+    let s = index,
+      e = index;
     while (s > 0) {
       const prev = words[s - 1]?.text || "";
       if (/[.!?]$/.test(prev)) break;
@@ -207,7 +303,62 @@ export default function Home() {
     }
   }
 
-  // החלפה / חזרה למקור + TTS של המשפט
+  // ✅ פונקציה חדשה: החלפת משפט אוטומטית בעת הגעה למילה ששונתה
+  async function replaceSentenceAtIndex(idx) {
+    if (!words[idx]) return;
+
+    const [s, e] = getSentenceRange(idx);
+    const sentenceText = words.slice(s, e + 1).map((w) => w.text).join(" ");
+    const sentenceStart = words[s]?.start ?? words[idx].start;
+    const sentenceEnd = words[e]?.end ?? words[idx].end;
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      // שמירה על רצף זמנים אם ירצה המשתמש לחזור אחורה
+      audioRef.current.currentTime = sentenceStart;
+    }
+
+    try {
+      setIsReplacing(true);
+      revokePrevTtsUrl();
+
+      const resp = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: sentenceText }),
+      });
+      if (!resp.ok) throw new Error("TTS failed");
+
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      ttsUrlRef.current = url;
+
+      if (ttsRef.current) {
+        ttsRef.current.src = url;
+        ttsRef.current.playbackRate = speed;
+        if (audioRef.current) audioRef.current.playbackRate = speed;
+
+        ttsRef.current.onplay = () => {
+          audioRef.current?.pause();
+        };
+        ttsRef.current.onended = () => {
+          setIsReplacing(false);
+          if (audioRef.current) {
+            audioRef.current.currentTime = Math.max(0, sentenceEnd + 0.05);
+            audioRef.current.play();
+          }
+          revokePrevTtsUrl();
+        };
+
+        await ttsRef.current.play();
+      }
+    } catch {
+      setIsReplacing(false);
+      audioRef.current?.play();
+    }
+  }
+
+  // החלפה / חזרה למקור + TTS של המשפט באופן יזום מתוך הפופאפ
   async function applySuggestion(chosen) {
     if (popup.index == null) return;
     const idx = popup.index;
@@ -215,9 +366,13 @@ export default function Home() {
     const isReturnToOriginal = chosen === words[idx].original;
 
     if (isReturnToOriginal) {
-      next[idx] = { ...next[idx], text: words[idx].original };
+      next[idx] = { ...next[idx], text: words[idx].original, changed: false };
       setWords(next);
-      setHighlighted((prev) => { const copy = new Set(prev); copy.delete(idx); return copy; });
+      setHighlighted((prev) => {
+        const copy = new Set(prev);
+        copy.delete(idx);
+        return copy;
+      });
 
       // שמירת שינוי שמחזיר למקור
       try {
@@ -240,9 +395,13 @@ export default function Home() {
       }
       return;
     } else {
-      next[idx] = { ...next[idx], text: chosen };
+      next[idx] = { ...next[idx], text: chosen, changed: true };
       setWords(next);
-      setHighlighted((prev) => { const copy = new Set(prev); copy.add(idx); return copy; });
+      setHighlighted((prev) => {
+        const copy = new Set(prev);
+        copy.add(idx);
+        return copy;
+      });
 
       // שמירת שינוי חדש
       try {
@@ -285,9 +444,11 @@ export default function Home() {
       if (ttsRef.current) {
         ttsRef.current.src = url;
         ttsRef.current.playbackRate = speed;
-        audioRef.current.playbackRate = speed;
+        if (audioRef.current) audioRef.current.playbackRate = speed;
 
-        ttsRef.current.onplay = () => { audioRef.current?.pause(); };
+        ttsRef.current.onplay = () => {
+          audioRef.current?.pause();
+        };
         ttsRef.current.onended = () => {
           setIsReplacing(false);
           if (audioRef.current) {
@@ -304,6 +465,9 @@ export default function Home() {
       audioRef.current?.play();
     }
 
+    // עדכון זיכרון המשפט האחרון שהוחלף כדי למנוע יירוט כפול מיידי
+    lastAutoReplaceRangeRef.current = { s, e, chapter: String(selectedChapter) };
+
     closePopup(false);
   }
 
@@ -314,7 +478,11 @@ export default function Home() {
 
   function handleWordRightClick(e, index) {
     e.preventDefault();
-    if (ttsRef.current) { ttsRef.current.pause(); revokePrevTtsUrl(); setIsReplacing(false); }
+    if (ttsRef.current) {
+      ttsRef.current.pause();
+      revokePrevTtsUrl();
+      setIsReplacing(false);
+    }
     if (!audioRef.current) return;
     audioRef.current.currentTime = words[index].start;
     audioRef.current.play();
@@ -338,7 +506,7 @@ export default function Home() {
 
   // מיזוג הצעות
   function mergeSuggestions(oldArr, newWords) {
-    const seen = new Set(oldArr.map(o => o.word.toLowerCase()));
+    const seen = new Set(oldArr.map((o) => o.word.toLowerCase()));
     const extras = [];
     for (const w of newWords) {
       const lw = String(w).trim();
@@ -370,7 +538,7 @@ export default function Home() {
       if (!resp.ok) throw new Error(data?.error || "Chat failed");
 
       const arr = Array.isArray(data?.suggestions) ? data.suggestions : [];
-      setPopup(p => ({ ...p, suggestions: mergeSuggestions(p.suggestions, arr) }));
+      setPopup((p) => ({ ...p, suggestions: mergeSuggestions(p.suggestions, arr) }));
       setChatLoading(false);
     } catch {
       setChatLoading(false);
@@ -387,7 +555,9 @@ export default function Home() {
         <label>בחר פרק: </label>
         <select
           value={selectedChapter}
-          onChange={(e) => setSelectedChapter(e.target.value)}
+          onChange={(e) => {
+            setSelectedChapter(e.target.value);
+          }}
         >
           {Array.from({ length: 53 }, (_, i) => (
             <option key={i + 1} value={i + 1}>
@@ -440,8 +610,12 @@ export default function Home() {
               marginRight: 4,
               borderRadius: 4,
               cursor: "pointer",
-              color: highlighted.has(i) ? "blue" : "inherit",
+              color:
+                highlighted.has(i) || w.changed ? "blue" : "inherit",
+              textDecoration:
+                highlighted.has(i) || w.changed ? "underline" : "none",
             }}
+            title={w.changed ? "שונה" : ""}
           >
             {w.text}
           </span>
@@ -463,22 +637,44 @@ export default function Home() {
             zIndex: 9999,
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 6,
+            }}
+          >
             <strong>הצעות</strong>
-            <button onClick={() => closePopup(true)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✕</button>
+            <button
+              onClick={() => closePopup(true)}
+              style={{
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+              }}
+            >
+              ✕
+            </button>
           </div>
 
           {popup.loading && <div>טוען...</div>}
-          {popup.error && <div style={{ color: "crimson" }}>שגיאה: {popup.error}</div>}
+          {popup.error && (
+            <div style={{ color: "crimson" }}>שגיאה: {popup.error}</div>
+          )}
 
           {!popup.loading && !popup.error && (
             <>
               {popup.suggestions.length === 0 ? (
                 <div>אין הצעות</div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                >
                   {popup.suggestions.map((s, idx) => (
-                    <div key={idx} style={{ display: "flex", flexDirection: "column" }}>
+                    <div
+                      key={idx}
+                      style={{ display: "flex", flexDirection: "column" }}
+                    >
                       <button
                         onClick={() => applySuggestion(s.word)}
                         style={{
@@ -491,7 +687,8 @@ export default function Home() {
                           fontWeight: s.isRecommended ? "bold" : "normal",
                         }}
                       >
-                        {s.word} {s.isRecommended ? "⭐" : ""}{s.isOriginal ? " (מקורי)" : ""}
+                        {s.word} {s.isRecommended ? "⭐" : ""}
+                        {s.isOriginal ? " (מקורי)" : ""}
                       </button>
                       <button
                         onClick={() => handleTranslate(s.word)}
@@ -509,7 +706,13 @@ export default function Home() {
                         🌐 תרגם
                       </button>
                       {translations[s.word] && (
-                        <div style={{ fontSize: "14px", marginTop: 2, color: "#333" }}>
+                        <div
+                          style={{
+                            fontSize: "14px",
+                            marginTop: 2,
+                            color: "#333",
+                          }}
+                        >
                           ➜ {translations[s.word]}
                         </div>
                       )}
@@ -523,16 +726,33 @@ export default function Home() {
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   placeholder="כתוב בקשה חופשית (למשל: מילה שמתאימה לסצנה של ניצחון)..."
-                  style={{ width: "100%", minHeight: 48, border: "1px solid #ccc", borderRadius: 6, padding: 6 }}
+                  style={{
+                    width: "100%",
+                    minHeight: 48,
+                    border: "1px solid #ccc",
+                    borderRadius: 6,
+                    padding: 6,
+                  }}
                 />
                 <button
                   onClick={handleChatSend}
                   disabled={chatLoading}
-                  style={{ marginTop: 4, padding: "4px 8px", borderRadius: 6, border: "1px solid #ddd", background: "#f0f0f0", cursor: "pointer" }}
+                  style={{
+                    marginTop: 4,
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    border: "1px solid #ddd",
+                    background: "#f0f0f0",
+                    cursor: "pointer",
+                  }}
                 >
                   {chatLoading ? "שולח..." : "שלח"}
                 </button>
-                {chatError && <div style={{ marginTop: 6, fontSize: 14, color: "crimson" }}>{chatError}</div>}
+                {chatError && (
+                  <div style={{ marginTop: 6, fontSize: 14, color: "crimson" }}>
+                    {chatError}
+                  </div>
+                )}
               </div>
             </>
           )}
