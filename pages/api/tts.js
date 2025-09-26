@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     // יצירת אודיו עם OpenAI
     const response = await client.audio.speech.create({
       model: "gpt-4o-mini-tts",
-      voice: "alloy", // אפשר לשנות קול אם תרצה
+      voice: "shimmer", // אפשר לשנות קול אם תרצה
       input: text,
     });
 
