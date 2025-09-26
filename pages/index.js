@@ -93,6 +93,12 @@ export default function Home() {
     }
   }, [selectedChapter]);
 
+  // ✅ לוודא שתמיד מוחל ה־playbackRate גם אחרי מעבר פרק או שינוי מהירות
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = speed;
+    if (ttsRef.current) ttsRef.current.playbackRate = speed;
+  }, [speed, selectedChapter]);
+
   // סנכרון ההדגשה הצהובה עם זמן ה-MP3 הראשי
   useEffect(() => {
     if (!audioRef.current) return;
@@ -497,45 +503,55 @@ export default function Home() {
                         onClick={() => handleTranslate(s.word)}
                         style={{
                           textAlign: "left",
-                          padding: "4px 6px",
-                          borderRadius: 6,
-                          border: "1px solid #eee",
-                          background: "#fafafa",
+                          padding: "4px 8px",
+                          border: "none",
+                          background: "transparent",
                           cursor: "pointer",
-                          fontSize: "14px",
-                          marginTop: 2,
+                          fontSize: 14,
+                          color: "green",
+                          marginLeft: 10,
                         }}
                       >
-                        🌐 תרגם
+                        תרגום
                       </button>
                       {translations[s.word] && (
-                        <div style={{ fontSize: "14px", marginTop: 2, color: "#333" }}>
-                          ➜ {translations[s.word]}
-                        </div>
+                        <span style={{ fontSize: 14, color: "gray", marginLeft: 10 }}>
+                          {translations[s.word]}
+                        </span>
                       )}
                     </div>
                   ))}
                 </div>
               )}
-
-              <div style={{ marginTop: 10 }}>
-                <textarea
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="כתוב בקשה חופשית (למשל: מילה שמתאימה לסצנה של ניצחון)..."
-                  style={{ width: "100%", minHeight: 48, border: "1px solid #ccc", borderRadius: 6, padding: 6 }}
-                />
-                <button
-                  onClick={handleChatSend}
-                  disabled={chatLoading}
-                  style={{ marginTop: 4, padding: "4px 8px", borderRadius: 6, border: "1px solid #ddd", background: "#f0f0f0", cursor: "pointer" }}
-                >
-                  {chatLoading ? "שולח..." : "שלח"}
-                </button>
-                {chatError && <div style={{ marginTop: 6, fontSize: 14, color: "crimson" }}>{chatError}</div>}
-              </div>
             </>
           )}
+
+          <div style={{ marginTop: 10 }}>
+            <textarea
+              rows={2}
+              placeholder="שאל שאלה חופשית..."
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              style={{ width: "100%", resize: "none", borderRadius: 6, border: "1px solid #ddd", padding: 6 }}
+            />
+            <button
+              onClick={handleChatSend}
+              disabled={chatLoading}
+              style={{
+                marginTop: 6,
+                width: "100%",
+                padding: "6px",
+                borderRadius: 6,
+                border: "none",
+                background: "#007bff",
+                color: "white",
+                cursor: "pointer",
+              }}
+            >
+              {chatLoading ? "שולח..." : "שלח"}
+            </button>
+            {chatError && <div style={{ color: "red" }}>{chatError}</div>}
+          </div>
         </div>
       )}
     </div>
