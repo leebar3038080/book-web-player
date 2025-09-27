@@ -12,28 +12,25 @@ export default async function handler(req, res) {
 
   try {
     const prompt = `
-Suggest up to 5 alternative ENGLISH words or short phrases (1–2 words) 
-that could naturally replace the word "${word}" in the following literary context. 
+You are an expert literary editor. 
+Suggest up to 5 alternative English words OR short poetic phrases that could replace the word "${word}" in the following literary context:
 
-Do NOT stay too close to the root meaning of the original word.  
-Instead, focus on the **literary role and emotional effect** of the word in the sentence:  
-- What atmosphere or feeling does it create?  
-- How does it shape the reader’s sense of the place or moment?  
-
-Choose fluent, idiomatic expressions that a novelist or essayist might use.  
-Avoid generic dictionary synonyms like "destination", "journey", or "spot".  
-
-Examples of the style of replacements (for "pilgrimage site" in a social/literary context):  
-["retreat","sanctuary","haven","gathering place","shrine"]
-
-Context:
 ---
 ${context}
 ---
 
-Return ONLY strict JSON with an array called "suggestions".  
-Example:
-{ "suggestions": ["retreat","sanctuary","haven","gathering place","shrine"] }
+Guidelines:
+- The alternatives must feel natural in **literary fiction** (not marketing or slang).
+- Include both **single-word options** and **short symbolic/poetic phrases**.
+- Capture nuance, mood, and cultural/emotional resonance, not just dictionary synonyms.
+- Prioritize words that could appear in a novel, evoking place, meaning, or atmosphere.
+- Do NOT repeat the original word.
+- Do NOT explain your choices.
+- Response must be STRICT JSON of the form:
+{ "suggestions": ["word1", "word2", "word3", "word4", "word5"] }
+
+Examples of style (do NOT reuse these exact ones): 
+"retreat", "sanctuary", "haven", "gathering place", "shrine"
     `;
 
     const completion = await client.chat.completions.create({
@@ -42,24 +39,12 @@ Example:
       temperature: 0.7,
     });
 
-    let text = completion.choices[0]?.message?.content || "{}";
-    text = text.trim();
-
-    // הסרת גדרות קוד אם חזרו
-    if (text.startsWith("```")) {
-      text = text.replace(/^```json\s*|\s*```$/g, "").trim();
-      text = text.replace(/^```\s*|\s*```$/g, "").trim();
-    }
-
-    let out = null;
+    let raw = completion.choices[0]?.message?.content || "{}";
+    let out;
     try {
-      out = JSON.parse(text);
+      out = JSON.parse(raw);
     } catch {
-      // ניסיון חילוץ JSON מגוש טקסט
-      const match = text.match(/{[\s\S]*}/);
-      if (match) {
-        try { out = JSON.parse(match[0]); } catch {}
-      }
+      out = { suggestions: [] };
     }
 
     if (!out || !Array.isArray(out.suggestions)) {
