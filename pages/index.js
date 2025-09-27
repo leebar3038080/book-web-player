@@ -4,12 +4,10 @@ export default function Home() {
   const [words, setWords] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [speed, setSpeed] = useState(1.0);
-
   const audioRef = useRef(null);
   const ttsRef = useRef(null);
   const wordRefs = useRef([]);
   const ttsUrlRef = useRef(null);
-
   const [popup, setPopup] = useState({
     visible: false,
     x: 0,
@@ -19,15 +17,12 @@ export default function Home() {
     loading: false,
     error: null,
   });
-
   const [highlighted, setHighlighted] = useState(new Set());
   const [isReplacing, setIsReplacing] = useState(false);
-
   const [translations, setTranslations] = useState({});
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState(null);
-
   const [selectedChapter, setSelectedChapter] = useState("1");
 
   useEffect(() => {
@@ -38,8 +33,8 @@ export default function Home() {
         data.segments.forEach((seg) => {
           seg.words.forEach((w) =>
             flat.push({
-              text: w.word,
-              original: w.word,
+              text: w.word.replace(/-/g, "\u2011"),
+              original: w.word.replace(/-/g, "\u2011"),
               start: w.start,
               end: w.end,
             })
@@ -48,8 +43,7 @@ export default function Home() {
         setWords(flat);
         setCurrentIndex(-1);
         setHighlighted(new Set());
-
-        fetch(`/api/changes`)
+        fetch("/api/changes")
           .then((r) => r.json())
           .then(({ changes }) => {
             if (!Array.isArray(changes)) return;
@@ -57,10 +51,8 @@ export default function Home() {
               (c) => String(c.chapter) === String(selectedChapter)
             );
             if (!chapterChanges.length) return;
-
             const latest = {};
             for (const c of chapterChanges) latest[c.index] = c;
-
             const changedSet = new Set();
             const updated = flat.map((w, i) => {
               const rec = latest[i];
@@ -73,7 +65,6 @@ export default function Home() {
               }
               return w;
             });
-
             setWords(updated);
             setHighlighted(changedSet);
           })
@@ -103,8 +94,15 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [words, isReplacing]);
 
-  const handlePlay = () => { if (!isReplacing) audioRef.current?.play(); };
-  const handlePause = () => { audioRef.current?.pause(); ttsRef.current?.pause(); };
+  const handlePlay = () => {
+    if (!isReplacing) audioRef.current?.play();
+  };
+
+  const handlePause = () => {
+    audioRef.current?.pause();
+    ttsRef.current?.pause();
+  };
+
   const handleStop = () => {
     audioRef.current?.pause();
     audioRef.current.currentTime = 0;
@@ -112,12 +110,14 @@ export default function Home() {
     ttsRef.current?.pause();
     setIsReplacing(false);
   };
+
   const handleSlower = () => {
     const newSpeed = Math.max(0.5, speed - 0.1);
     setSpeed(newSpeed);
     if (audioRef.current) audioRef.current.playbackRate = newSpeed;
     if (ttsRef.current) ttsRef.current.playbackRate = newSpeed;
   };
+
   const handleFaster = () => {
     const newSpeed = Math.min(1.5, speed + 0.1);
     setSpeed(newSpeed);
@@ -133,12 +133,52 @@ export default function Home() {
     return words.slice(start, end).map((w) => w.text).join(" ");
   }
 
-  function safeWordDisplay(text) {
-    return text.replace(/-/g, "-"); // מקף בלתי־שובר U+2011
+  async function handleWordClick(e, index) {
+    e.preventDefault();
+    audioRef.current?.pause();
+    ttsRef.current?.pause();
+    const rect = e.target.getBoundingClientRect();
+    const x = rect.left + window.scrollX;
+    const y = rect.top + window.scrollY + rect.height + 6;
+    const target = words[index]?.text;
+    const context = getContext(index);
+    setPopup({
+      visible: true,
+      x,
+      y,
+      index,
+      suggestions: [],
+      loading: true,
+      error: null,
+    });
+    try {
+      const resp = await fetch("/api/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word: target, context }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.error || "Request failed");
+      const originalWord = words[index].original;
+      const suggestions = (data?.suggestions || []).map((w) => ({ word: w }));
+      if (target !== originalWord) {
+        suggestions.unshift({ word: originalWord, isOriginal: true });
+      }
+      setPopup((p) => ({ ...p, loading: false, suggestions }));
+      setChatInput("");
+      setChatError(null);
+    } catch (err) {
+      setPopup((p) => ({
+        ...p,
+        loading: false,
+        error: err?.message || "Unknown error",
+      }));
+    }
   }
 
   function getSentenceRange(index) {
-    let s = index, e = index;
+    let s = index,
+      e = index;
     while (s > 0) {
       const prev = words[s - 1]?.text || "";
       if (/[.!?]$/.test(prev)) break;
@@ -159,51 +199,6 @@ export default function Home() {
     }
   }
 
-  async function handleWordClick(e, index) {
-    e.preventDefault();
-    audioRef.current?.pause();
-    ttsRef.current?.pause();
-
-    const rect = e.target.getBoundingClientRect();
-    const x = rect.left + window.scrollX;
-    const y = rect.top + window.scrollY + rect.height + 6;
-
-    const target = words[index]?.text;
-    const context = getContext(index);
-
-    setPopup({
-      visible: true,
-      x,
-      y,
-      index,
-      suggestions: [],
-      loading: true,
-      error: null,
-    });
-
-    try {
-      const resp = await fetch("/api/suggest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word: target, context }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data?.error || "Request failed");
-
-      const originalWord = words[index].original;
-      const suggestions = (data?.suggestions || []).map(w => ({ word: w }));
-      if (target !== originalWord) {
-        suggestions.unshift({ word: originalWord, isOriginal: true });
-      }
-
-      setPopup((p) => ({ ...p, loading: false, suggestions }));
-      setChatInput("");
-      setChatError(null);
-    } catch (err) {
-      setPopup((p) => ({ ...p, loading: false, error: err?.message || "Unknown error" }));
-    }
-  }
-
   async function applySuggestion(chosen) {
     if (popup.index == null) return;
     const idx = popup.index;
@@ -213,8 +208,11 @@ export default function Home() {
     if (isReturnToOriginal) {
       next[idx] = { ...next[idx], text: words[idx].original };
       setWords(next);
-      setHighlighted((prev) => { const copy = new Set(prev); copy.delete(idx); return copy; });
-
+      setHighlighted((prev) => {
+        const copy = new Set(prev);
+        copy.delete(idx);
+        return copy;
+      });
       try {
         await fetch("/api/changes", {
           method: "POST",
@@ -227,7 +225,6 @@ export default function Home() {
           }),
         });
       } catch {}
-
       closePopup(false);
       if (audioRef.current) {
         audioRef.current.currentTime = Math.max(0, words[idx].start - 0.5);
@@ -237,8 +234,11 @@ export default function Home() {
     } else {
       next[idx] = { ...next[idx], text: chosen };
       setWords(next);
-      setHighlighted((prev) => { const copy = new Set(prev); copy.add(idx); return copy; });
-
+      setHighlighted((prev) => {
+        const copy = new Set(prev);
+        copy.add(idx);
+        return copy;
+      });
       try {
         await fetch("/api/changes", {
           method: "POST",
@@ -275,13 +275,13 @@ export default function Home() {
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       ttsUrlRef.current = url;
-
       if (ttsRef.current) {
         ttsRef.current.src = url;
         ttsRef.current.playbackRate = speed;
         audioRef.current.playbackRate = speed;
-
-        ttsRef.current.onplay = () => { audioRef.current?.pause(); };
+        ttsRef.current.onplay = () => {
+          audioRef.current?.pause();
+        };
         ttsRef.current.onended = () => {
           setIsReplacing(false);
           if (audioRef.current) {
@@ -290,14 +290,12 @@ export default function Home() {
           }
           revokePrevTtsUrl();
         };
-
         await ttsRef.current.play();
       }
     } catch {
       setIsReplacing(false);
       audioRef.current?.play();
     }
-
     closePopup(false);
   }
 
@@ -308,7 +306,11 @@ export default function Home() {
 
   function handleWordRightClick(e, index) {
     e.preventDefault();
-    if (ttsRef.current) { ttsRef.current.pause(); revokePrevTtsUrl(); setIsReplacing(false); }
+    if (ttsRef.current) {
+      ttsRef.current.pause();
+      revokePrevTtsUrl();
+      setIsReplacing(false);
+    }
     if (!audioRef.current) return;
     audioRef.current.currentTime = words[index].start;
     audioRef.current.play();
@@ -330,7 +332,7 @@ export default function Home() {
   }
 
   function mergeSuggestions(oldArr, newWords) {
-    const seen = new Set(oldArr.map(o => o.word.toLowerCase()));
+    const seen = new Set(oldArr.map((o) => o.word.toLowerCase()));
     const extras = [];
     for (const w of newWords) {
       const lw = String(w).trim();
@@ -350,7 +352,6 @@ export default function Home() {
     const idx = popup.index;
     const word = words[idx]?.text || "";
     const context = getContext(idx);
-
     try {
       const resp = await fetch("/api/chat-suggest", {
         method: "POST",
@@ -359,9 +360,11 @@ export default function Home() {
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error || "Chat failed");
-
       const arr = Array.isArray(data?.suggestions) ? data.suggestions : [];
-      setPopup(p => ({ ...p, suggestions: mergeSuggestions(p.suggestions, arr) }));
+      setPopup((p) => ({
+        ...p,
+        suggestions: mergeSuggestions(p.suggestions, arr),
+      }));
       setChatLoading(false);
     } catch {
       setChatLoading(false);
@@ -379,7 +382,6 @@ export default function Home() {
       }}
     >
       <h1 style={{ textAlign: "center", marginBottom: 30 }}>הנערה מהבית הוורד</h1>
-
       <div style={{ marginBottom: 20, textAlign: "center" }}>
         <label>בחר פרק: </label>
         <select
@@ -393,12 +395,23 @@ export default function Home() {
           ))}
         </select>
       </div>
-
       <audio ref={audioRef} hidden>
         <source src={`/books/${selectedChapter}.mp3`} type="audio/mpeg" />
       </audio>
       <audio ref={ttsRef} hidden />
-
+      <div
+        style={{
+          marginBottom: 20,
+          textAlign: "center",
+        }}
+      >
+        <button onClick={handlePlay}>▶ Play</button>
+        <button onClick={handlePause}>⏸ Pause</button>
+        <button onClick={handleStop}>⏹ Stop</button>
+        <button onClick={handleSlower}>⏪ Slower</button>
+        <button onClick={handleFaster}>⏩ Faster</button>
+        <span style={{ marginLeft: 10 }}>Speed: {speed.toFixed(1)}x</span>
+      </div>
       <div
         style={{
           border: "1px solid #ddd",
@@ -411,9 +424,8 @@ export default function Home() {
           background: "#fdfcf8",
           textAlign: "justify",
           whiteSpace: "normal",
-          overflowWrap: "normal",
-          wordBreak: "keep-all",
-          hyphens: "none",
+          wordBreak: "normal",
+          overflowWrap: "break-word",
         }}
       >
         {words.map((w, i) => (
@@ -424,9 +436,7 @@ export default function Home() {
             onContextMenu={(e) => handleWordRightClick(e, i)}
             style={{
               display: "inline-block",
-              maxWidth: "100%",
-              overflow: "hidden",
-              textOverflow: "clip",
+              whiteSpace: "nowrap",
               background:
                 i === currentIndex
                   ? "yellow"
@@ -439,11 +449,10 @@ export default function Home() {
               color: highlighted.has(i) ? "blue" : "inherit",
             }}
           >
-            {safeWordDisplay(w.text)}
+            {w.text}
           </span>
         ))}
       </div>
-
       {popup.visible && (
         <div
           style={{
@@ -459,22 +468,42 @@ export default function Home() {
             zIndex: 9999,
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 6,
+            }}
+          >
             <strong>הצעות</strong>
-            <button onClick={() => closePopup(true)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✕</button>
+            <button
+              onClick={() => closePopup(true)}
+              style={{
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+              }}
+            >
+              ✕
+            </button>
           </div>
-
           {popup.loading && <div>טוען...</div>}
-          {popup.error && <div style={{ color: "crimson" }}>שגיאה: {popup.error}</div>}
-
+          {popup.error && (
+            <div style={{ color: "crimson" }}>שגיאה: {popup.error}</div>
+          )}
           {!popup.loading && !popup.error && (
             <>
               {popup.suggestions.length === 0 ? (
                 <div>אין הצעות</div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                >
                   {popup.suggestions.map((s, idx) => (
-                    <div key={idx} style={{ display: "flex", flexDirection: "column" }}>
+                    <div
+                      key={idx}
+                      style={{ display: "flex", flexDirection: "column" }}
+                    >
                       <button
                         onClick={() => applySuggestion(s.word)}
                         style={{
@@ -487,7 +516,8 @@ export default function Home() {
                           fontWeight: s.isRecommended ? "bold" : "normal",
                         }}
                       >
-                        {s.word} {s.isRecommended ? "⭐" : ""}{s.isOriginal ? " (מקורי)" : ""}
+                        {s.word} {s.isRecommended ? "⭐" : ""}
+                        {s.isOriginal ? " (מקורי)" : ""}
                       </button>
                       <button
                         onClick={() => handleTranslate(s.word)}
@@ -505,7 +535,13 @@ export default function Home() {
                         תרגום
                       </button>
                       {translations[s.word] && (
-                        <span style={{ fontSize: 14, color: "gray", marginLeft: 10 }}>
+                        <span
+                          style={{
+                            fontSize: 14,
+                            color: "gray",
+                            marginLeft: 10,
+                          }}
+                        >
                           {translations[s.word]}
                         </span>
                       )}
@@ -515,14 +551,19 @@ export default function Home() {
               )}
             </>
           )}
-
           <div style={{ marginTop: 10 }}>
             <textarea
               rows={2}
               placeholder="שאל שאלה חופשית..."
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              style={{ width: "100%", resize: "none", borderRadius: 6, border: "1px solid #ddd", padding: 6 }}
+              style={{
+                width: "100%",
+                resize: "none",
+                borderRadius: 6,
+                border: "1px solid #ddd",
+                padding: 6,
+              }}
             />
             <button
               onClick={handleChatSend}
