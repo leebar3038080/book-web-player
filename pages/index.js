@@ -420,7 +420,7 @@ export default function Home() {
           width: "700px",
           background: "#fdfcf8",
           textAlign: "justify",
-          whiteSpace: "normal",
+          whiteSpace: "normal",   // מאפשר שבירת שורות רגילה
           wordWrap: "break-word",
         }}
       >
@@ -441,7 +441,7 @@ export default function Home() {
               borderRadius: 4,
               cursor: "pointer",
               color: highlighted.has(i) ? "blue" : "inherit",
-              whiteSpace: "nowrap",   // ← התיקון שמונע שבירת מילה
+              whiteSpace: "nowrap",   // מונע שבירה בתוך מילה
             }}
           >
             {w.text}
@@ -532,13 +532,20 @@ export default function Home() {
             <button
               onClick={handleChatSend}
               disabled={chatLoading}
-              style={{ marginTop: 6, padding: "6px 12px" }}
+              style={{
+                marginTop: 6,
+                width: "100%",
+                borderRadius: 6,
+                border: "none",
+                background: "#007bff",
+                color: "white",
+                padding: "6px",
+                cursor: "pointer",
+              }}
             >
               {chatLoading ? "שולח..." : "שלח"}
             </button>
-            {chatError && (
-              <div style={{ color: "crimson", marginTop: 4 }}>{chatError}</div>
-            )}
+            {chatError && <div style={{ color: "crimson" }}>{chatError}</div>}
           </div>
         </div>
       )}
