@@ -5,10 +5,10 @@ export default function Home() {
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [speed, setSpeed] = useState(1.0);
 
-  const audioRef = useRef(null); // MP3 ראשי
-  const ttsRef = useRef(null);   // נגן TTS זמני למשפט
+  const audioRef = useRef(null);
+  const ttsRef = useRef(null);
   const wordRefs = useRef([]);
-  const ttsUrlRef = useRef(null); // לשחרור URL קודם
+  const ttsUrlRef = useRef(null);
 
   const [popup, setPopup] = useState({
     visible: false,
@@ -23,18 +23,13 @@ export default function Home() {
   const [highlighted, setHighlighted] = useState(new Set());
   const [isReplacing, setIsReplacing] = useState(false);
 
-  // תרגומים להצעות
-  const [translations, setTranslations] = useState({}); // { "word": "תרגום" }
-
-  // צ'אט חופשי
+  const [translations, setTranslations] = useState({});
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState(null);
 
-  // ✅ מצב חדש – בחירת פרק
   const [selectedChapter, setSelectedChapter] = useState("1");
 
-  // טוען JSON + MP3 לפי הפרק שנבחר
   useEffect(() => {
     fetch(`/books/${selectedChapter}.json`)
       .then((res) => res.json())
@@ -54,7 +49,6 @@ export default function Home() {
         setCurrentIndex(-1);
         setHighlighted(new Set());
 
-        // החלת שינויים שמורים מה־changes.json דרך ה־API
         fetch(`/api/changes`)
           .then((r) => r.json())
           .then(({ changes }) => {
@@ -64,7 +58,6 @@ export default function Home() {
             );
             if (!chapterChanges.length) return;
 
-            // שמירת השינוי האחרון לכל אינדקס
             const latest = {};
             for (const c of chapterChanges) latest[c.index] = c;
 
@@ -93,13 +86,11 @@ export default function Home() {
     }
   }, [selectedChapter]);
 
-  // ✅ לוודא שתמיד מוחל ה־playbackRate גם אחרי מעבר פרק או שינוי מהירות
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = speed;
     if (ttsRef.current) ttsRef.current.playbackRate = speed;
   }, [speed, selectedChapter]);
 
-  // סנכרון ההדגשה הצהובה עם זמן ה-MP3 הראשי
   useEffect(() => {
     if (!audioRef.current) return;
     const interval = setInterval(() => {
@@ -112,7 +103,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [words, isReplacing]);
 
-  // שליטה בסיסית
   const handlePlay = () => { if (!isReplacing) audioRef.current?.play(); };
   const handlePause = () => { audioRef.current?.pause(); ttsRef.current?.pause(); };
   const handleStop = () => {
@@ -135,7 +125,6 @@ export default function Home() {
     if (ttsRef.current) ttsRef.current.playbackRate = newSpeed;
   };
 
-  // הקשר (40 מילים אחורה, 20 קדימה)
   function getContext(index) {
     const spanBack = 40;
     const spanForward = 20;
@@ -144,7 +133,6 @@ export default function Home() {
     return words.slice(start, end).map((w) => w.text).join(" ");
   }
 
-  // פתיחת פופאפ הצעות (קליק שמאלי)
   async function handleWordClick(e, index) {
     e.preventDefault();
     audioRef.current?.pause();
@@ -190,7 +178,6 @@ export default function Home() {
     }
   }
 
-  // חישוב גבולות משפט
   function getSentenceRange(index) {
     let s = index, e = index;
     while (s > 0) {
@@ -213,7 +200,6 @@ export default function Home() {
     }
   }
 
-  // החלפה / חזרה למקור + TTS של המשפט
   async function applySuggestion(chosen) {
     if (popup.index == null) return;
     const idx = popup.index;
@@ -225,7 +211,6 @@ export default function Home() {
       setWords(next);
       setHighlighted((prev) => { const copy = new Set(prev); copy.delete(idx); return copy; });
 
-      // שמירת שינוי שמחזיר למקור
       try {
         await fetch("/api/changes", {
           method: "POST",
@@ -250,7 +235,6 @@ export default function Home() {
       setWords(next);
       setHighlighted((prev) => { const copy = new Set(prev); copy.add(idx); return copy; });
 
-      // שמירת שינוי חדש
       try {
         await fetch("/api/changes", {
           method: "POST",
@@ -326,7 +310,6 @@ export default function Home() {
     audioRef.current.play();
   }
 
-  // תרגום מילה
   async function handleTranslate(word) {
     try {
       const resp = await fetch("/api/translate", {
@@ -342,7 +325,6 @@ export default function Home() {
     }
   }
 
-  // מיזוג הצעות
   function mergeSuggestions(oldArr, newWords) {
     const seen = new Set(oldArr.map(o => o.word.toLowerCase()));
     const extras = [];
@@ -357,7 +339,6 @@ export default function Home() {
     return [...extras, ...oldArr];
   }
 
-  // שליחת צ'אט
   async function handleChatSend() {
     if (!chatInput.trim() || popup.index == null) return;
     setChatLoading(true);
@@ -385,11 +366,17 @@ export default function Home() {
   }
 
   return (
-    <div style={{ padding: "20px", fontFamily: "Arial", fontSize: "18px" }}>
-      <h1>הנערה מהבית הוורד</h1>
+    <div
+      style={{
+        padding: "40px",
+        fontFamily: "Georgia, serif",
+        background: "#f5f5f0",
+        minHeight: "100vh",
+      }}
+    >
+      <h1 style={{ textAlign: "center", marginBottom: 30 }}>הנערה מהבית הוורד</h1>
 
-      {/* ✅ בחירת פרק */}
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 20, textAlign: "center" }}>
         <label>בחר פרק: </label>
         <select
           value={selectedChapter}
@@ -408,7 +395,12 @@ export default function Home() {
       </audio>
       <audio ref={ttsRef} hidden />
 
-      <div style={{ marginBottom: 20 }}>
+      <div
+        style={{
+          marginBottom: 20,
+          textAlign: "center",
+        }}
+      >
         <button onClick={handlePlay}>▶ Play</button>
         <button onClick={handlePause}>⏸ Pause</button>
         <button onClick={handleStop}>⏹ Stop</button>
@@ -420,14 +412,16 @@ export default function Home() {
       <div
         style={{
           border: "1px solid #ddd",
-          padding: "16px",
-          lineHeight: 1.8,
-          fontSize: 18,
+          padding: "40px",
+          margin: "0 auto",
+          lineHeight: 1.9,
+          fontSize: 20,
           borderRadius: 8,
-          width: "100%",
+          width: "700px",
+          background: "#fdfcf8",
+          textAlign: "justify",
           whiteSpace: "normal",
           wordWrap: "break-word",
-          marginTop: 20,
         }}
       >
         {words.map((w, i) => (
