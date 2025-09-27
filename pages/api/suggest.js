@@ -18,8 +18,8 @@ that could naturally replace the word "${word}" in the following literary contex
 Focus on literary, expressive alternatives that feel idiomatic and carry the same 
 emotional or narrative tone, not generic dictionary synonyms.
 
-❌ Avoid generic outputs such as "destination", "journey", or "spot".  
-✅ Prefer richer literary choices such as: "retreat", "sanctuary", "haven", "gathering place", "shrine".
+Avoid generic outputs such as "destination", "journey", or "spot".  
+Prefer richer literary choices such as: "retreat", "sanctuary", "haven", "gathering place", "shrine".
 
 Context:
 ---
@@ -37,12 +37,24 @@ Example:
       temperature: 0.7,
     });
 
-    let raw = completion.choices[0]?.message?.content || "{}";
-    let out;
+    let text = completion.choices[0]?.message?.content || "{}";
+    text = text.trim();
+
+    // הסרת גדרות קוד אם חזרו
+    if (text.startsWith("```")) {
+      text = text.replace(/^```json\s*|\s*```$/g, "").trim();
+      text = text.replace(/^```\s*|\s*```$/g, "").trim();
+    }
+
+    let out = null;
     try {
-      out = JSON.parse(raw);
+      out = JSON.parse(text);
     } catch {
-      out = { suggestions: [] };
+      // ניסיון חילוץ JSON מגוש טקסט
+      const match = text.match(/{[\s\S]*}/);
+      if (match) {
+        try { out = JSON.parse(match[0]); } catch {}
+      }
     }
 
     if (!out || !Array.isArray(out.suggestions)) {
