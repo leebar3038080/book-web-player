@@ -38,8 +38,8 @@ export default function Home() {
         data.segments.forEach((seg) => {
           seg.words.forEach((w) =>
             flat.push({
-              text: w.word,
-              original: w.word,
+              text: w.word.replace(/-/g, "-"), // החלפת מקף רגיל במקף לא שביר
+              original: w.word.replace(/-/g, "-"),
               start: w.start,
               end: w.end,
             })
@@ -65,7 +65,7 @@ export default function Home() {
             const updated = flat.map((w, i) => {
               const rec = latest[i];
               if (rec && typeof rec.newWord === "string") {
-                const newText = rec.newWord;
+                const newText = rec.newWord.replace(/-/g, "-");
                 if (newText !== w.original) {
                   changedSet.add(i);
                 }
@@ -165,7 +165,7 @@ export default function Home() {
       if (!resp.ok) throw new Error(data?.error || "Request failed");
 
       const originalWord = words[index].original;
-      const suggestions = (data?.suggestions || []).map(w => ({ word: w }));
+      const suggestions = (data?.suggestions || []).map(w => ({ word: w.replace(/-/g, "-") }));
       if (target !== originalWord) {
         suggestions.unshift({ word: originalWord, isOriginal: true });
       }
@@ -334,7 +334,7 @@ export default function Home() {
       const key = lw.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      extras.push({ word: lw, isRecommended: true, fromChat: true });
+      extras.push({ word: lw.replace(/-/g, "-"), isRecommended: true, fromChat: true });
     }
     return [...extras, ...oldArr];
   }
@@ -417,11 +417,14 @@ export default function Home() {
           lineHeight: 1.9,
           fontSize: 20,
           borderRadius: 8,
-          width: "700px",
+          width: "100%",
+          maxWidth: "700px",
           background: "#fdfcf8",
           textAlign: "justify",
           whiteSpace: "normal",
-          wordBreak: "keep-all",
+          wordBreak: "break-word",
+          overflowWrap: "break-word",
+          hyphens: "manual",
         }}
       >
         {words.map((w, i) => (
@@ -526,14 +529,13 @@ export default function Home() {
               placeholder="שאל שאלה חופשית..."
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              style={{ width: "100%", resize: "none", borderRadius: 6, border: "1px solid #ddd", padding: 6 }}
+              style={{ width: "100%", borderRadius: 6, padding: 6, border: "1px solid #ddd" }}
             />
             <button
               onClick={handleChatSend}
               disabled={chatLoading}
               style={{
                 marginTop: 6,
-                width: "100%",
                 borderRadius: 6,
                 border: "none",
                 background: "#007bff",
