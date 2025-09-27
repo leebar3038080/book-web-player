@@ -420,8 +420,8 @@ export default function Home() {
           width: "700px",
           background: "#fdfcf8",
           textAlign: "justify",
-          whiteSpace: "normal",   // מאפשר שבירת שורות רגילה
-          wordWrap: "break-word",
+          whiteSpace: "normal",
+          wordBreak: "keep-all",
         }}
       >
         {words.map((w, i) => (
@@ -441,7 +441,6 @@ export default function Home() {
               borderRadius: 4,
               cursor: "pointer",
               color: highlighted.has(i) ? "blue" : "inherit",
-              whiteSpace: "nowrap",   // מונע שבירה בתוך מילה
             }}
           >
             {w.text}
