@@ -30,9 +30,6 @@ export default function Home() {
 
   const [selectedChapter, setSelectedChapter] = useState("1");
 
-  const NB_HYPHEN = "\u2011"; // מקף לא־שביר
-  const sanitizeHyphens = (s) => String(s).replace(/-/g, NB_HYPHEN);
-
   useEffect(() => {
     fetch(`/books/${selectedChapter}.json`)
       .then((res) => res.json())
@@ -41,8 +38,8 @@ export default function Home() {
         data.segments.forEach((seg) => {
           seg.words.forEach((w) =>
             flat.push({
-              text: sanitizeHyphens(w.word),
-              original: sanitizeHyphens(w.word),
+              text: w.word,
+              original: w.word,
               start: w.start,
               end: w.end,
             })
@@ -68,8 +65,10 @@ export default function Home() {
             const updated = flat.map((w, i) => {
               const rec = latest[i];
               if (rec && typeof rec.newWord === "string") {
-                const newText = sanitizeHyphens(rec.newWord);
-                if (newText !== w.original) changedSet.add(i);
+                const newText = rec.newWord;
+                if (newText !== w.original) {
+                  changedSet.add(i);
+                }
                 return { ...w, text: newText };
               }
               return w;
@@ -134,6 +133,32 @@ export default function Home() {
     return words.slice(start, end).map((w) => w.text).join(" ");
   }
 
+  function safeWordDisplay(text) {
+    return text.replace(/-/g, "-"); // מקף בלתי־שובר U+2011
+  }
+
+  function getSentenceRange(index) {
+    let s = index, e = index;
+    while (s > 0) {
+      const prev = words[s - 1]?.text || "";
+      if (/[.!?]$/.test(prev)) break;
+      s--;
+    }
+    while (e < words.length - 1) {
+      const cur = words[e]?.text || "";
+      if (/[.!?]$/.test(cur)) break;
+      e++;
+    }
+    return [s, e];
+  }
+
+  function revokePrevTtsUrl() {
+    if (ttsUrlRef.current) {
+      URL.revokeObjectURL(ttsUrlRef.current);
+      ttsUrlRef.current = null;
+    }
+  }
+
   async function handleWordClick(e, index) {
     e.preventDefault();
     audioRef.current?.pause();
@@ -166,7 +191,7 @@ export default function Home() {
       if (!resp.ok) throw new Error(data?.error || "Request failed");
 
       const originalWord = words[index].original;
-      const suggestions = (data?.suggestions || []).map(w => ({ word: sanitizeHyphens(w) }));
+      const suggestions = (data?.suggestions || []).map(w => ({ word: w }));
       if (target !== originalWord) {
         suggestions.unshift({ word: originalWord, isOriginal: true });
       }
@@ -179,34 +204,11 @@ export default function Home() {
     }
   }
 
-  function getSentenceRange(index) {
-    let s = index, e = index;
-    while (s > 0) {
-      const prev = words[s - 1]?.text || "";
-      if (/[.!?]$/.test(prev)) break;
-      s--;
-    }
-    while (e < words.length - 1) {
-      const cur = words[e]?.text || "";
-      if (/[.!?]$/.test(cur)) break;
-      e++;
-    }
-    return [s, e];
-  }
-
-  function revokePrevTtsUrl() {
-    if (ttsUrlRef.current) {
-      URL.revokeObjectURL(ttsUrlRef.current);
-      ttsUrlRef.current = null;
-    }
-  }
-
   async function applySuggestion(chosen) {
     if (popup.index == null) return;
     const idx = popup.index;
     const next = [...words];
-    const sanitizedChosen = sanitizeHyphens(chosen);
-    const isReturnToOriginal = sanitizedChosen === words[idx].original;
+    const isReturnToOriginal = chosen === words[idx].original;
 
     if (isReturnToOriginal) {
       next[idx] = { ...next[idx], text: words[idx].original };
@@ -233,7 +235,7 @@ export default function Home() {
       }
       return;
     } else {
-      next[idx] = { ...next[idx], text: sanitizedChosen };
+      next[idx] = { ...next[idx], text: chosen };
       setWords(next);
       setHighlighted((prev) => { const copy = new Set(prev); copy.add(idx); return copy; });
 
@@ -245,7 +247,7 @@ export default function Home() {
             chapter: selectedChapter,
             index: idx,
             original: words[idx].original,
-            newWord: sanitizedChosen,
+            newWord: chosen,
           }),
         });
       } catch {}
@@ -328,7 +330,7 @@ export default function Home() {
   }
 
   function mergeSuggestions(oldArr, newWords) {
-    const seen = new Set(oldArr.map(o => String(o.word).toLowerCase()));
+    const seen = new Set(oldArr.map(o => o.word.toLowerCase()));
     const extras = [];
     for (const w of newWords) {
       const lw = String(w).trim();
@@ -336,7 +338,7 @@ export default function Home() {
       const key = lw.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      extras.push({ word: sanitizeHyphens(lw), isRecommended: true, fromChat: true });
+      extras.push({ word: lw, isRecommended: true, fromChat: true });
     }
     return [...extras, ...oldArr];
   }
@@ -399,20 +401,6 @@ export default function Home() {
 
       <div
         style={{
-          marginBottom: 20,
-          textAlign: "center",
-        }}
-      >
-        <button onClick={handlePlay}>▶ Play</button>
-        <button onClick={handlePause}>⏸ Pause</button>
-        <button onClick={handleStop}>⏹ Stop</button>
-        <button onClick={handleSlower}>⏪ Slower</button>
-        <button onClick={handleFaster}>⏩ Faster</button>
-        <span style={{ marginLeft: 10 }}>Speed: {speed.toFixed(1)}x</span>
-      </div>
-
-      <div
-        style={{
           border: "1px solid #ddd",
           padding: "40px",
           margin: "0 auto",
@@ -422,9 +410,10 @@ export default function Home() {
           width: "700px",
           background: "#fdfcf8",
           textAlign: "justify",
-          whiteSpace: "normal",   // שבירת שורות רגילה
-          wordBreak: "keep-all",  // לא לשבור בתוך מילה
-          // לא משתמשים ב-wordWrap/overflowWrap כדי למנוע שבירה כפויה
+          whiteSpace: "normal",
+          overflowWrap: "normal",
+          wordBreak: "keep-all",
+          hyphens: "none",
         }}
       >
         {words.map((w, i) => (
@@ -434,6 +423,10 @@ export default function Home() {
             onClick={(e) => handleWordClick(e, i)}
             onContextMenu={(e) => handleWordRightClick(e, i)}
             style={{
+              display: "inline-block",
+              maxWidth: "100%",
+              overflow: "hidden",
+              textOverflow: "clip",
               background:
                 i === currentIndex
                   ? "yellow"
@@ -444,10 +437,9 @@ export default function Home() {
               borderRadius: 4,
               cursor: "pointer",
               color: highlighted.has(i) ? "blue" : "inherit",
-              // הוסר whiteSpace: "nowrap"
             }}
           >
-            {w.text}
+            {safeWordDisplay(w.text)}
           </span>
         ))}
       </div>
@@ -538,17 +530,17 @@ export default function Home() {
               style={{
                 marginTop: 6,
                 width: "100%",
+                padding: "6px",
                 borderRadius: 6,
                 border: "none",
                 background: "#007bff",
                 color: "white",
-                padding: "6px",
                 cursor: "pointer",
               }}
             >
               {chatLoading ? "שולח..." : "שלח"}
             </button>
-            {chatError && <div style={{ color: "crimson" }}>{chatError}</div>}
+            {chatError && <div style={{ color: "red" }}>{chatError}</div>}
           </div>
         </div>
       )}
