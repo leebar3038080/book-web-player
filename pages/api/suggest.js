@@ -14,8 +14,12 @@ export default async function handler(req, res) {
     const prompt = `
 Suggest up to 5 alternative ENGLISH words or short phrases (1–2 words) 
 that could naturally replace the word "${word}" in the following literary context. 
-Focus on expressions that feel fluent, idiomatic, and suitable for the sentence, 
-not just dictionary synonyms.
+
+Focus on literary, expressive alternatives that feel idiomatic and carry the same 
+emotional or narrative tone, not generic dictionary synonyms.
+
+❌ Avoid generic outputs such as "destination", "journey", or "spot".  
+✅ Prefer richer literary choices such as: "retreat", "sanctuary", "haven", "gathering place", "shrine".
 
 Context:
 ---
