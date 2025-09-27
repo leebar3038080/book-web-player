@@ -5,10 +5,10 @@ export default function Home() {
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [speed, setSpeed] = useState(1.0);
 
-  const audioRef = useRef(null); // MP3 ראשי
-  const ttsRef = useRef(null);   // נגן TTS זמני למשפט
+  const audioRef = useRef(null);
+  const ttsRef = useRef(null);
   const wordRefs = useRef([]);
-  const ttsUrlRef = useRef(null); // לשחרור URL קודם
+  const ttsUrlRef = useRef(null);
 
   const [popup, setPopup] = useState({
     visible: false,
@@ -36,15 +36,14 @@ export default function Home() {
       .then((data) => {
         const flat = [];
         data.segments.forEach((seg) => {
-          seg.words.forEach((w) => {
-            const safeWord = w.word.replace(/-/g, "\u2011"); // מניעת שבירת מקף
+          seg.words.forEach((w) =>
             flat.push({
-              text: safeWord,
-              original: safeWord,
+              text: w.word,
+              original: w.word,
               start: w.start,
               end: w.end,
-            });
-          });
+            })
+          );
         });
         setWords(flat);
         setCurrentIndex(-1);
@@ -66,11 +65,11 @@ export default function Home() {
             const updated = flat.map((w, i) => {
               const rec = latest[i];
               if (rec && typeof rec.newWord === "string") {
-                const safeNew = rec.newWord.replace(/-/g, "\u2011");
-                if (safeNew !== w.original) {
+                const newText = rec.newWord;
+                if (newText !== w.original) {
                   changedSet.add(i);
                 }
-                return { ...w, text: safeNew };
+                return { ...w, text: newText };
               }
               return w;
             });
@@ -205,8 +204,7 @@ export default function Home() {
     if (popup.index == null) return;
     const idx = popup.index;
     const next = [...words];
-    const safeChosen = chosen.replace(/-/g, "\u2011");
-    const isReturnToOriginal = safeChosen === words[idx].original;
+    const isReturnToOriginal = chosen === words[idx].original;
 
     if (isReturnToOriginal) {
       next[idx] = { ...next[idx], text: words[idx].original };
@@ -233,7 +231,7 @@ export default function Home() {
       }
       return;
     } else {
-      next[idx] = { ...next[idx], text: safeChosen };
+      next[idx] = { ...next[idx], text: chosen };
       setWords(next);
       setHighlighted((prev) => { const copy = new Set(prev); copy.add(idx); return copy; });
 
@@ -245,7 +243,7 @@ export default function Home() {
             chapter: selectedChapter,
             index: idx,
             original: words[idx].original,
-            newWord: safeChosen,
+            newWord: chosen,
           }),
         });
       } catch {}
@@ -336,7 +334,7 @@ export default function Home() {
       const key = lw.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      extras.push({ word: lw.replace(/-/g, "\u2011"), isRecommended: true, fromChat: true });
+      extras.push({ word: lw, isRecommended: true, fromChat: true });
     }
     return [...extras, ...oldArr];
   }
@@ -368,8 +366,15 @@ export default function Home() {
   }
 
   return (
-    <div style={{ padding: "20px", fontFamily: "Georgia, serif", fontSize: "18px", background: "#f9f9f7" }}>
-      <h1 style={{ textAlign: "center" }}>הנערה מהבית הוורד</h1>
+    <div
+      style={{
+        padding: "40px",
+        fontFamily: "Georgia, serif",
+        background: "#f5f5f0",
+        minHeight: "100vh",
+      }}
+    >
+      <h1 style={{ textAlign: "center", marginBottom: 30 }}>הנערה מהבית הוורד</h1>
 
       <div style={{ marginBottom: 20, textAlign: "center" }}>
         <label>בחר פרק: </label>
@@ -390,7 +395,12 @@ export default function Home() {
       </audio>
       <audio ref={ttsRef} hidden />
 
-      <div style={{ marginBottom: 20, textAlign: "center" }}>
+      <div
+        style={{
+          marginBottom: 20,
+          textAlign: "center",
+        }}
+      >
         <button onClick={handlePlay}>▶ Play</button>
         <button onClick={handlePause}>⏸ Pause</button>
         <button onClick={handleStop}>⏹ Stop</button>
@@ -403,16 +413,15 @@ export default function Home() {
         style={{
           border: "1px solid #ddd",
           padding: "40px",
-          lineHeight: 1.8,
-          fontSize: 18,
-          borderRadius: 8,
-          width: "60%",
           margin: "0 auto",
-          background: "white",
+          lineHeight: 1.9,
+          fontSize: 20,
+          borderRadius: 8,
+          width: "700px",
+          background: "#fdfcf8",
           textAlign: "justify",
-          wordBreak: "normal",
-          overflowWrap: "normal",
-          hyphens: "none",
+          whiteSpace: "normal",
+          wordWrap: "break-word",
         }}
       >
         {words.map((w, i) => (
@@ -432,6 +441,7 @@ export default function Home() {
               borderRadius: 4,
               cursor: "pointer",
               color: highlighted.has(i) ? "blue" : "inherit",
+              whiteSpace: "nowrap",   // ← התיקון שמונע שבירת מילה
             }}
           >
             {w.text}
@@ -500,7 +510,7 @@ export default function Home() {
                         תרגום
                       </button>
                       {translations[s.word] && (
-                        <span style={{ fontSize: 14, marginLeft: 12, color: "darkgreen" }}>
+                        <span style={{ fontSize: 14, color: "gray", marginLeft: 10 }}>
                           {translations[s.word]}
                         </span>
                       )}
@@ -508,26 +518,28 @@ export default function Home() {
                   ))}
                 </div>
               )}
-
-              <div style={{ marginTop: 10 }}>
-                <textarea
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="כתוב כאן שאלה..."
-                  style={{ width: "100%", height: 60, borderRadius: 6 }}
-                />
-                <button
-                  onClick={handleChatSend}
-                  disabled={chatLoading}
-                  style={{ marginTop: 6, padding: "6px 10px" }}
-                >
-                  שלח
-                </button>
-                {chatLoading && <span> ⏳</span>}
-                {chatError && <div style={{ color: "crimson" }}>{chatError}</div>}
-              </div>
             </>
           )}
+
+          <div style={{ marginTop: 10 }}>
+            <textarea
+              rows={2}
+              placeholder="שאל שאלה חופשית..."
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              style={{ width: "100%", resize: "none", borderRadius: 6, border: "1px solid #ddd", padding: 6 }}
+            />
+            <button
+              onClick={handleChatSend}
+              disabled={chatLoading}
+              style={{ marginTop: 6, padding: "6px 12px" }}
+            >
+              {chatLoading ? "שולח..." : "שלח"}
+            </button>
+            {chatError && (
+              <div style={{ color: "crimson", marginTop: 4 }}>{chatError}</div>
+            )}
+          </div>
         </div>
       )}
     </div>
