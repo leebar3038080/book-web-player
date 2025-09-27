@@ -15,18 +15,23 @@ export default async function handler(req, res) {
 Suggest up to 5 alternative ENGLISH words or short phrases (1–2 words) 
 that could naturally replace the word "${word}" in the following literary context. 
 
-Focus on literary, expressive alternatives that feel idiomatic and carry the same 
-emotional or narrative tone, not generic dictionary synonyms.
+Do NOT stay too close to the root meaning of the original word.  
+Instead, focus on the **literary role and emotional effect** of the word in the sentence:  
+- What atmosphere or feeling does it create?  
+- How does it shape the reader’s sense of the place or moment?  
 
-Avoid generic outputs such as "destination", "journey", or "spot".  
-Prefer richer literary choices such as: "retreat", "sanctuary", "haven", "gathering place", "shrine".
+Choose fluent, idiomatic expressions that a novelist or essayist might use.  
+Avoid generic dictionary synonyms like "destination", "journey", or "spot".  
+
+Examples of the style of replacements (for "pilgrimage site" in a social/literary context):  
+["retreat","sanctuary","haven","gathering place","shrine"]
 
 Context:
 ---
 ${context}
 ---
 
-Return ONLY strict JSON with an array called "suggestions".
+Return ONLY strict JSON with an array called "suggestions".  
 Example:
 { "suggestions": ["retreat","sanctuary","haven","gathering place","shrine"] }
     `;
