@@ -12,13 +12,19 @@ export default async function handler(req, res) {
 
   try {
     const prompt = `
-    Suggest up to 5 alternative English words for the word "${word}" in this context:
-    ---
-    ${context}
-    ---
-    Return ONLY a JSON object with an array called "suggestions".
-    Example:
-    { "suggestions": ["word1", "word2", "word3"] }
+Suggest up to 5 alternative ENGLISH words or short phrases (1–2 words) 
+that could naturally replace the word "${word}" in the following literary context. 
+Focus on expressions that feel fluent, idiomatic, and suitable for the sentence, 
+not just dictionary synonyms.
+
+Context:
+---
+${context}
+---
+
+Return ONLY strict JSON with an array called "suggestions".
+Example:
+{ "suggestions": ["retreat","sanctuary","haven","gathering place","shrine"] }
     `;
 
     const completion = await client.chat.completions.create({
