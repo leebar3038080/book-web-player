@@ -1,59 +1,44 @@
-import OpenAI from "openai";
+from openai import OpenAI
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+client = OpenAI(api_key="YOUR_API_KEY")
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).end();
+def build_suggest_prompt(word, sentence_before, sentence_after):
+    return f"""
+You are an assistant that suggests better replacement words.
+The goal is **not** to provide dictionary synonyms, but to propose
+alternative words or phrases that capture the **literary tone, emotional feel,
+and cultural context** of the text.
 
-  const { word, context } = req.body || {};
-  if (!word || !context) {
-    return res.status(400).json({ error: "Missing word or context" });
-  }
-
-  try {
-    const prompt = `
-You are an expert literary editor. 
-Suggest up to 5 alternative English words OR short poetic phrases that could replace the word "${word}" in the following literary context:
-
----
-${context}
----
+Context:
+- Previous sentence: "{sentence_before}"
+- Target word: "{word}"
+- Next sentence: "{sentence_after}"
 
 Guidelines:
-- The alternatives must feel natural in **literary fiction** (not marketing or slang).
-- Include both **single-word options** and **short symbolic/poetic phrases**.
-- Capture nuance, mood, and cultural/emotional resonance, not just dictionary synonyms.
-- Prioritize words that could appear in a novel, evoking place, meaning, or atmosphere.
-- Do NOT repeat the original word.
-- Do NOT explain your choices.
-- Response must be STRICT JSON of the form:
-{ "suggestions": ["word1", "word2", "word3", "word4", "word5"] }
+1. Suggest 5 strong alternatives.
+2. Each should sound natural in a **literary / narrative text**.
+3. Focus on words that imply **place, feeling, or significance**, not just direct synonyms.
+4. Avoid giving abstract or overly academic terms.
+5. Do not repeat these sample examples, but use them as style inspiration:
+   retreat, sanctuary, haven, gathering place, shrine.
 
-Examples of style (do NOT reuse these exact ones): 
-"retreat", "sanctuary", "haven", "gathering place", "shrine"
-    `;
+Output:
+List of 5 alternatives, each as a single word or short phrase.
+"""
 
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-    });
+def get_suggestions(word, sentence_before, sentence_after):
+    prompt = build_suggest_prompt(word, sentence_before, sentence_after)
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",  # אפשר לשנות מודל לפי הצורך
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.9
+    )
+    return response.choices[0].message.content
 
-    let raw = completion.choices[0]?.message?.content || "{}";
-    let out;
-    try {
-      out = JSON.parse(raw);
-    } catch {
-      out = { suggestions: [] };
-    }
-
-    if (!out || !Array.isArray(out.suggestions)) {
-      out = { suggestions: [] };
-    }
-
-    res.status(200).json(out);
-  } catch (err) {
-    console.error("Suggest API error:", err);
-    res.status(500).json({ error: "Failed to get suggestions" });
-  }
-}
+# דוגמה להרצה
+if __name__ == "__main__":
+    word = "pilgrimage"
+    before = "The locals for whom this house was also a"
+    after = "site to eat and spend time."
+    suggestions = get_suggestions(word, before, after)
+    print("Suggestions:\n", suggestions)
