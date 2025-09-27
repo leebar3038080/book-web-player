@@ -1,46 +1,56 @@
-import openai
+import OpenAI from "openai";
 
-openai.api_key = "YOUR_API_KEY"
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-def build_suggest_prompt(word, sentence_before, sentence_after):
-    return f"""
-You are an assistant that suggests replacement words.
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).end();
 
-Target word: "{word}"
-Previous sentence: "{sentence_before}"
-Next sentence: "{sentence_after}"
+  const { word, context } = req.body || {};
+  if (!word || !context) {
+    return res.status(400).json({ error: "Missing word or context" });
+  }
 
-Instructions:
-1. Suggest 5 alternatives that can **fit grammatically in the exact same place** as the target word.
-2. Each suggestion should be **one word** (preferred) or at most **two words**.
-3. The replacement must sound **natural and literary** in the given context.
-4. Avoid phrases that are too long or break grammar (e.g., "still tender young" does not fit).
-5. Focus on alternatives that capture the **emotional and cultural nuance** of the text, not just dictionary synonyms.
+  try {
+    const prompt = `
+You are an assistant for literary editing.
+Suggest 3–5 alternative **English** words for the word "${word}" that would fit naturally and grammatically in the sentence context below.
 
-Output: A list of 5 alternatives.
-"""
+Context:
+---
+${context}
+---
 
-def get_suggestions(word, sentence_before, sentence_after):
-    prompt = build_suggest_prompt(word, sentence_before, sentence_after)
+Guidelines:
+- Prefer single words. If unavoidable, allow up to 2 words.
+- The replacement must be grammatically correct in the sentence.
+- The tone should match a literary narrative (natural and flowing).
+- Do NOT explain, only output JSON.
 
-    response = openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a literary writing assistant."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=150,
-        temperature=0.8,
-        n=1
-    )
+Return ONLY valid JSON:
+{ "suggestions": ["word1","word2","word3"] }
+    `;
 
-    return response.choices[0].message.content.strip()
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5,
+    });
 
-# דוגמה לשימוש
-if __name__ == "__main__":
-    word = "essentially"
-    sentence_before = "She was only two years old."
-    sentence_after = "Only to an outsider did the young girl appear older."
-    
-    suggestions = get_suggestions(word, sentence_before, sentence_after)
-    print("Suggestions:\n", suggestions)
+    let raw = completion.choices[0]?.message?.content || "{}";
+    let out;
+    try {
+      out = JSON.parse(raw);
+    } catch {
+      out = { suggestions: [] };
+    }
+
+    if (!out || !Array.isArray(out.suggestions)) {
+      out = { suggestions: [] };
+    }
+
+    res.status(200).json(out);
+  } catch (err) {
+    console.error("Suggest API error:", err);
+    res.status(500).json({ error: "Failed to get suggestions" });
+  }
+}
