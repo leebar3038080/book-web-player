@@ -30,6 +30,9 @@ export default function Home() {
 
   const [selectedChapter, setSelectedChapter] = useState("1");
 
+  const NB_HYPHEN = "\u2011"; // מקף לא־שביר
+  const sanitizeHyphens = (s) => String(s).replace(/-/g, NB_HYPHEN);
+
   useEffect(() => {
     fetch(`/books/${selectedChapter}.json`)
       .then((res) => res.json())
@@ -38,8 +41,8 @@ export default function Home() {
         data.segments.forEach((seg) => {
           seg.words.forEach((w) =>
             flat.push({
-              text: w.word.replace(/-/g, "-"), // החלפת מקף רגיל במקף לא שביר
-              original: w.word.replace(/-/g, "-"),
+              text: sanitizeHyphens(w.word),
+              original: sanitizeHyphens(w.word),
               start: w.start,
               end: w.end,
             })
@@ -65,10 +68,8 @@ export default function Home() {
             const updated = flat.map((w, i) => {
               const rec = latest[i];
               if (rec && typeof rec.newWord === "string") {
-                const newText = rec.newWord.replace(/-/g, "-");
-                if (newText !== w.original) {
-                  changedSet.add(i);
-                }
+                const newText = sanitizeHyphens(rec.newWord);
+                if (newText !== w.original) changedSet.add(i);
                 return { ...w, text: newText };
               }
               return w;
@@ -165,7 +166,7 @@ export default function Home() {
       if (!resp.ok) throw new Error(data?.error || "Request failed");
 
       const originalWord = words[index].original;
-      const suggestions = (data?.suggestions || []).map(w => ({ word: w.replace(/-/g, "-") }));
+      const suggestions = (data?.suggestions || []).map(w => ({ word: sanitizeHyphens(w) }));
       if (target !== originalWord) {
         suggestions.unshift({ word: originalWord, isOriginal: true });
       }
@@ -204,7 +205,8 @@ export default function Home() {
     if (popup.index == null) return;
     const idx = popup.index;
     const next = [...words];
-    const isReturnToOriginal = chosen === words[idx].original;
+    const sanitizedChosen = sanitizeHyphens(chosen);
+    const isReturnToOriginal = sanitizedChosen === words[idx].original;
 
     if (isReturnToOriginal) {
       next[idx] = { ...next[idx], text: words[idx].original };
@@ -231,7 +233,7 @@ export default function Home() {
       }
       return;
     } else {
-      next[idx] = { ...next[idx], text: chosen };
+      next[idx] = { ...next[idx], text: sanitizedChosen };
       setWords(next);
       setHighlighted((prev) => { const copy = new Set(prev); copy.add(idx); return copy; });
 
@@ -243,7 +245,7 @@ export default function Home() {
             chapter: selectedChapter,
             index: idx,
             original: words[idx].original,
-            newWord: chosen,
+            newWord: sanitizedChosen,
           }),
         });
       } catch {}
@@ -326,7 +328,7 @@ export default function Home() {
   }
 
   function mergeSuggestions(oldArr, newWords) {
-    const seen = new Set(oldArr.map(o => o.word.toLowerCase()));
+    const seen = new Set(oldArr.map(o => String(o.word).toLowerCase()));
     const extras = [];
     for (const w of newWords) {
       const lw = String(w).trim();
@@ -334,7 +336,7 @@ export default function Home() {
       const key = lw.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      extras.push({ word: lw.replace(/-/g, "-"), isRecommended: true, fromChat: true });
+      extras.push({ word: sanitizeHyphens(lw), isRecommended: true, fromChat: true });
     }
     return [...extras, ...oldArr];
   }
@@ -417,14 +419,12 @@ export default function Home() {
           lineHeight: 1.9,
           fontSize: 20,
           borderRadius: 8,
-          width: "100%",
-          maxWidth: "700px",
+          width: "700px",
           background: "#fdfcf8",
           textAlign: "justify",
-          whiteSpace: "normal",
-          wordBreak: "break-word",
-          overflowWrap: "break-word",
-          hyphens: "manual",
+          whiteSpace: "normal",   // שבירת שורות רגילה
+          wordBreak: "keep-all",  // לא לשבור בתוך מילה
+          // לא משתמשים ב-wordWrap/overflowWrap כדי למנוע שבירה כפויה
         }}
       >
         {words.map((w, i) => (
@@ -444,6 +444,7 @@ export default function Home() {
               borderRadius: 4,
               cursor: "pointer",
               color: highlighted.has(i) ? "blue" : "inherit",
+              // הוסר whiteSpace: "nowrap"
             }}
           >
             {w.text}
@@ -529,13 +530,14 @@ export default function Home() {
               placeholder="שאל שאלה חופשית..."
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              style={{ width: "100%", borderRadius: 6, padding: 6, border: "1px solid #ddd" }}
+              style={{ width: "100%", resize: "none", borderRadius: 6, border: "1px solid #ddd", padding: 6 }}
             />
             <button
               onClick={handleChatSend}
               disabled={chatLoading}
               style={{
                 marginTop: 6,
+                width: "100%",
                 borderRadius: 6,
                 border: "none",
                 background: "#007bff",
